@@ -1,0 +1,28 @@
+#== Idea ==#
+Packages to provide detection, localization, and mapping in the ROS environment by utilizing OpenCV/ARUCO.
+
+#== Nodes ==#
+Pose Detector:
+	- Use the in-built libraries to identify markers
+	- Loads marker config from yaml file
+	- Use yaml to switch between single and board (board is an array)
+	- Boards are defined by:
+		- Array of markers (split into height/width based on array)
+		- Marker size
+		- Marker separation
+	- Singles or boards are treated as singular markers
+	- Singles and boards cannot be used at the same time
+	- Output:
+		- Use marker_msgs/MarkerStamped (1 message per "marker")
+		- ids[] lists all ids in a marker
+		- id_confidence lists which singles could be seen in the marker (0 or 1)
+		- pose is from marker center
+
+Mapper:
+	- Loads the same yaml as Pose Detector to know how many to expect (and to match single ids to "board id")
+	- How mapping works:
+		- Notes down first marker pose as the 0,0 point
+		- Matches multiple markers with the same stamp as being linked
+		- Link each marker to its parent, and back to 0,0
+		- Push to TF, and perhaps filter future frames to refine transform
+	- Should publish the camera frame relative to one of the markers (perhaps try to hold the highest in the TF tree)
