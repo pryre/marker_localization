@@ -1,0 +1,11 @@
+# Board configuration for the environment
+
+num_boards: 2
+
+board_1:
+  rows: 2
+  cols: 2
+
+board_2:
+  rows: 1
+  cols: 1

@@ -34,6 +34,7 @@ class MarkerDetector {
 		ros::NodeHandle nh_;
 		image_transport::ImageTransport it_;
 		image_transport::Subscriber image_sub_;
+		ros::Subscriber camera_info_sub_;
 		image_transport::Publisher image_pub_;
 
 		cv::Ptr<cv::aruco::Dictionary> dictionary;
@@ -44,19 +45,23 @@ class MarkerDetector {
 		bool estimatePose;
 		double markerLength;
 
+		bool got_camera_info;
 		bool send_debug;
 
+		std::vector< double > cam_info_K;
+		std::vector< double > cam_info_D;
 		cv::Mat camMatrix;
 		cv::Mat distCoeffs;
 
 	public:
-		MarkerDetector() : it_(nh_) {
+		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_) {
+
 			// Subscrive to input video feed and publish output video feed
-			image_sub_ = it_.subscribe("/usb_cam/image_raw", 1, &MarkerDetector::imageCb, this);
-			image_pub_ = it_.advertise("/marker_mapper/image_debug", 1);
+			image_pub_ = it_.advertise("image_debug", 1);	//TODO: param
 
 			send_debug = true;
 
+			//TODO: Load as params
 			dictionaryId = DICT_4X4_50;		//Which dictionary definition to use
 			showRejected = false;	//Show debug rejections
 			estimatePose = true;	//Estimate pose
@@ -66,32 +71,27 @@ class MarkerDetector {
 			ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
 
 			detectorParams = cv::aruco::DetectorParameters::create();
+			readDetectorParameters(nh_, detectorParams);
 			detectorParams->doCornerRefinement = true;
-			//TODO: Set a decent default params file
-			//bool readParamsOK = readDetectorParameters(detectorParams);
 
-			//if(!readParamsOK) {
-			//	ROS_ERROR("Invalid detector parameters file");
-			//	return;
-			//}
+			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( "/usb_cam/camera_info", 1, &MarkerDetector::camera_info_cb, this );	//TODO: param
 
-			camMatrix = (cv::Mat_<double>(3,3) << 759.1760609558013, 0, 287.5327100302847, 0, 758.6599948698546, 256.1236460408814, 0, 0, 1);
-			distCoeffs = (cv::Mat_<double>(1,5) << -0.00163408680065829, -0.03733632554264633, 0.005811228334756181, -0.005397615176127214, 0);
+			ROS_INFO("Waiting for camera info...");
+			got_camera_info = false;	//A check to see if we have received distortion and camera data
 
-			/* TODO: Load dynamically
-			if(estimatePose) {
-				bool readCamParamsOK = readCameraParameters(camMatrix, distCoeffs);
-
-				if(!readCamParamsOK) {
-					cerr << "Invalid camera file" << endl;
-					return;
-				}
+			while(!got_camera_info && ros::ok()) {
+				ros::spinOnce();
+				ros::Rate(20).sleep();
 			}
-			*/
+
+			ROS_INFO("Recieved camera info!");
+
+			ROS_INFO("Begining detection...");
+
+			image_sub_ = it_.subscribe("/usb_cam/image_raw", 1, &MarkerDetector::image_cb, this);	//TODO: param
 		}
 
 		~MarkerDetector() {
-			//cv::destroyWindow(OPENCV_WINDOW);
 		}
 
 		/*
@@ -130,7 +130,40 @@ class MarkerDetector {
 		}
 		*/
 
-		bool readDetectorParameters(cv::Ptr<cv::aruco::DetectorParameters> &params) {
+		void loadParam(ros::NodeHandle &n, const std::string &str, bool &param) {
+			if( !n.getParam( str, param ) ) {
+				ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param ? "true" : "false" );
+			} else {
+				ROS_INFO( "Loaded %s: %s", str.c_str(), param ? "true" : "false" );
+			}
+		}
+
+		void loadParam(ros::NodeHandle &n, const std::string &str, int &param) {
+			if( !n.getParam( str, param ) ) {
+				ROS_WARN( "No parameter set for \"%s\", using: %i", str.c_str(), param );
+			} else {
+				ROS_INFO( "Loaded %s: %i", str.c_str(), param );
+			}
+		}
+
+		void loadParam(ros::NodeHandle &n, const std::string &str, double &param) {
+			if( !n.getParam( str, param ) ) {
+				ROS_WARN( "No parameter set for \"%s\", using: %f", str.c_str(), param );
+			} else {
+				ROS_INFO( "Loaded %s: %f", str.c_str(), param );
+			}
+		}
+
+		void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
+			if( !n.getParam( str, param ) ) {
+				ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param.c_str() );
+			} else {
+				ROS_INFO( "Loaded %s: %s", str.c_str(), param.c_str() );
+			}
+		}
+
+		void readDetectorParameters(ros::NodeHandle &n, cv::Ptr<cv::aruco::DetectorParameters> &params) {
+			/*
 			params->adaptiveThreshWinSizeMin = 3;
 			params->adaptiveThreshWinSizeMax = 23;
 			params->adaptiveThreshWinSizeStep = 10;
@@ -151,11 +184,43 @@ class MarkerDetector {
 			params->maxErroneousBitsInBorderRate = 0.04;
 			params->minOtsuStdDev = 5.0;
 			params->errorCorrectionRate = 0.6;
+			*/
 
-			return true;
+			loadParam(n, "system/adaptive_thresh_win_size_min", params->adaptiveThreshWinSizeMin);
+			loadParam(n, "system/adaptive_thresh_win_size_max", params->adaptiveThreshWinSizeMax);
+			loadParam(n, "system/adaptive_thresh_win_size_step", params->adaptiveThreshWinSizeStep);
+			loadParam(n, "system/adaptive_thresh_constant", params->adaptiveThreshConstant);
+			loadParam(n, "system/min_marker_perimeter_rate", params->minMarkerPerimeterRate);
+			loadParam(n, "system/max_marker_perimeter_rate", params->maxMarkerPerimeterRate);
+			loadParam(n, "system/polygonal_approx_accuracy_rate", params->polygonalApproxAccuracyRate);
+			loadParam(n, "system/min_corner_distance_rate", params->minCornerDistanceRate);
+			loadParam(n, "system/min_distance_to_border", params->minDistanceToBorder);
+			loadParam(n, "system/min_marker_distance_rate", params->minMarkerDistanceRate);
+			loadParam(n, "system/do_corner_refinement", params->doCornerRefinement);
+			loadParam(n, "system/corner_refinement_win_size", params->cornerRefinementWinSize);
+			loadParam(n, "system/corner_refinement_max_iterations", params->cornerRefinementMaxIterations);
+			loadParam(n, "system/corner_refinement_min_accuracy", params->cornerRefinementMinAccuracy);
+			loadParam(n, "system/marker_border_bits", params->markerBorderBits);
+			loadParam(n, "system/perspective_remove_pixel_per_cell", params->perspectiveRemovePixelPerCell);
+			loadParam(n, "system/perspective_remove_ignored_margin_per_cell", params->perspectiveRemoveIgnoredMarginPerCell);
+			loadParam(n, "system/max_erroneous_bits_in_border_rate", params->maxErroneousBitsInBorderRate);
+			loadParam(n, "system/min_otsu_std_dev", params->minOtsuStdDev);
+			loadParam(n, "system/error_correction_rate", params->errorCorrectionRate);
 		}
 
-		void imageCb(const sensor_msgs::ImageConstPtr& msg) {
+		void camera_info_cb(const sensor_msgs::CameraInfoConstPtr& msg) {
+			//XXX: Here we are relying on the definition that ROS and OpenCV are both expecting 1x5 vectors
+			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(distCoeffs);	//Create a 3xN matrix with the raw data and copy the data to the right location
+
+			cv::Mat_<double> m;
+			for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
+				m.push_back( msg->K[i] );
+			m.reshape(0,3).copyTo(camMatrix);	//Reshape to 3x3 and copy the data to the right location
+
+			got_camera_info = true;	//Allow processing to begin
+		}
+
+		void image_cb(const sensor_msgs::ImageConstPtr& msg) {
 			cv_bridge::CvImagePtr cv_ptr;
 
 			try	{

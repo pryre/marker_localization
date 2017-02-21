@@ -1,0 +1,10 @@
+<launch>
+	<node pkg="marker_localization" type="marker_detector_node" name="marker_detector" clear_params="true" output="screen">
+		<!-- Connection Parameters -->
+		<param name="camera_input" value="/usb_cam/image_raw" type="str"/>
+
+		<!-- Detection Parameters /-->
+		<rosparam command="load" file="$(find marker_localization)/launch/detect_config.yaml"/>
+		<rosparam command="load" file="$(find marker_localization)/launch/board_config.yaml"/>
+	</node>
+</launch>
