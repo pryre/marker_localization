@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <string>
+#include <sstream>
 
 typedef enum {
 	DICT_4X4_50 = 0,
@@ -41,17 +42,23 @@ class MarkerDetector {
 		cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
 
 		int dictionaryId;
+
 		bool showRejected;
 		bool estimatePose;
-		double markerLength;
+
+		int border_bits;
+		double marker_size;
+		double marker_spacing;
 
 		bool got_camera_info;
 		bool send_debug;
 
 		std::vector< double > cam_info_K;
 		std::vector< double > cam_info_D;
-		cv::Mat camMatrix;
-		cv::Mat distCoeffs;
+		cv::Mat camera_matrix;
+		cv::Mat dist_coeffs;
+
+		std::vector< cv::Ptr< cv::aruco::Board > > board_list;
 
 	public:
 		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_) {
@@ -59,20 +66,27 @@ class MarkerDetector {
 			// Subscrive to input video feed and publish output video feed
 			image_pub_ = it_.advertise("image_debug", 1);	//TODO: param
 
-			send_debug = true;
-
 			//TODO: Load as params
-			dictionaryId = DICT_4X4_50;		//Which dictionary definition to use
+			send_debug = true;
 			showRejected = false;	//Show debug rejections
 			estimatePose = true;	//Estimate pose
-			markerLength = 0.10;	//Marker length (m)
 
+			dictionaryId = DICT_4X4_50;		//Which dictionary definition to use
 			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
 			ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
 
 			detectorParams = cv::aruco::DetectorParameters::create();
 			readDetectorParameters(nh_, detectorParams);
-			detectorParams->doCornerRefinement = true;
+
+			bool board_config_ok = readBoardConfig(nh_);
+			bool board_definitions_ok = readBoardDefinitions(nh_);
+
+			if(!board_config_ok || !board_definitions_ok) {
+				ROS_ERROR("Error reading board configuration file.");
+				ros::shutdown();
+			} else {
+				ROS_INFO("Board definitions read sucessfully!");
+			}
 
 			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( "/usb_cam/camera_info", 1, &MarkerDetector::camera_info_cb, this );	//TODO: param
 
@@ -162,6 +176,55 @@ class MarkerDetector {
 			}
 		}
 
+		bool readBoardConfig(ros::NodeHandle &n) {
+			loadParam(n, "boards/border_bits", border_bits);
+			loadParam(n, "boards/marker_size", marker_size);
+			loadParam(n, "boards/marker_spacing", marker_spacing);
+
+			return (border_bits > 0) && (marker_size > 0) && (marker_spacing > 0);
+		}
+
+		bool readBoardDefinitions(ros::NodeHandle &n) {
+			int num_boards;
+				bool check = true;
+
+			loadParam(n, "boards/num_boards", num_boards);
+
+			for(int i = 0; i < num_boards; i++) {
+				int rows = 0;
+				int cols = 0;
+				std::vector<int> ids;
+
+				std::stringstream board_name;
+				board_name << "boards/board_" << i;
+
+				check &= n.getParam( board_name.str() + "/rows" , rows );
+				check &= n.getParam( board_name.str() + "/cols" , cols );
+				check &= n.getParam( board_name.str() + "/ids" , ids );
+
+				//If the rows and cols are valid, and either the size matches number of ids (or generate ids)
+				if( ( ( ( rows * cols ) == ids.size() ) || ( ids.size() == 0 ) ) && ( rows > 0 ) && ( cols > 0 ) ) {
+					if(check) {	//All parameters loaded correctly
+						cv::Ptr<cv::aruco::GridBoard> gridboard =
+							cv::aruco::GridBoard::create(rows, cols, marker_size, marker_spacing, dictionary);
+
+						if(ids.size() > 0)
+							gridboard->ids = ids;
+
+						board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );
+					} else {
+						ROS_ERROR("Definition of board %i has an error!", i);
+						check = false;
+					}
+				} else {
+					ROS_ERROR("List of ids is not empty, and does not match rows * cols, or they are is invalid");
+					check = false;
+				}
+			}
+
+			return check;	//Definitions loaded OK!
+		}
+
 		void readDetectorParameters(ros::NodeHandle &n, cv::Ptr<cv::aruco::DetectorParameters> &params) {
 			/*
 			params->adaptiveThreshWinSizeMin = 3;
@@ -210,12 +273,12 @@ class MarkerDetector {
 
 		void camera_info_cb(const sensor_msgs::CameraInfoConstPtr& msg) {
 			//XXX: Here we are relying on the definition that ROS and OpenCV are both expecting 1x5 vectors
-			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(distCoeffs);	//Create a 3xN matrix with the raw data and copy the data to the right location
+			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(dist_coeffs);	//Create a 3xN matrix with the raw data and copy the data to the right location
 
 			cv::Mat_<double> m;
 			for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
 				m.push_back( msg->K[i] );
-			m.reshape(0,3).copyTo(camMatrix);	//Reshape to 3x3 and copy the data to the right location
+			m.reshape(0,3).copyTo(camera_matrix);	//Reshape to 3x3 and copy the data to the right location
 
 			got_camera_info = true;	//Allow processing to begin
 		}
@@ -237,45 +300,55 @@ class MarkerDetector {
 			std::vector< int > ids;
 			std::vector< std::vector< cv::Point2f > > corners;
 			std::vector< std::vector< cv::Point2f > > rejected;
-			std::vector< cv::Vec3d > rvecs;
-			std::vector< cv::Vec3d > tvecs;
 
 			// detect markers and estimate pose
 			cv::aruco::detectMarkers(cv_ptr->image, dictionary, corners, ids, detectorParams, rejected);
 
-			//TODO:
-			//Right here the system should split the ids found into grouped definitions
-			// based on the boards, etc. that the user has defined, then evaluate each
-			// id set individually, giving a TF output for each
-			//All id sets should be output with TFs relative to the camera frame
+			//TODO: //This does not work for a single marker board, need to trim id results and estimate using the normal marker function
 
-			if(ids.size() > 0) {
-				//TODO: Maybe worth having a throttled message to keep track of average performance
-				if(estimatePose && (ids.size() > 0)) {
-					cv::aruco::estimatePoseSingleMarkers(corners, markerLength, camMatrix, distCoeffs, rvecs, tvecs);
-					//TODO: TF output
+			for(int i = 0; i < board_list.size(); i++) {
+				int markersOfBoardDetected = 0;
+				cv::Vec3d rvec;
+				cv::Vec3d tvec;
+
+				//TODO: Consider doing marker refinement
+				//if(refindStrategy)
+				//    aruco::refineDetectedMarkers(image, board, corners, ids, rejected, camMatrix, distCoeffs);
+
+				if(ids.size() > 0) {
+					//TODO: Maybe worth having a throttled message to keep track of average performance
+					//if(estimatePose && (ids.size() > 0)) {
+					//	cv::aruco::estimatePoseSingleMarkers(corners, marker_size, camera_matrix, dist_coeffs, rvecs, tvecs);
+					//}
+
+					markersOfBoardDetected =
+						cv::aruco::estimatePoseBoard(corners, ids, board_list.at(i), camera_matrix, dist_coeffs, rvec, tvec);
+				}
+
+				//==-- draw results
+				if(send_debug) {	//TODO: & has subscribers
+					if(ids.size() > 0) {
+						cv::aruco::drawDetectedMarkers(cv_ptr->image, corners, ids);
+
+						//if(estimatePose) {
+						//	for(unsigned int i = 0; i < ids.size(); i++)
+						//		cv::aruco::drawAxis(cv_ptr->image, camera_matrix, dist_coeffs, rvecs[i], tvecs[i], marker_size * 0.5f);
+						//}
+
+						if(markersOfBoardDetected > 0)
+							cv::aruco::drawAxis(cv_ptr->image, camera_matrix, dist_coeffs, rvec, tvec, marker_size * 2.0f);
+					}
+
+					if(showRejected && rejected.size() > 0)
+						cv::aruco::drawDetectedMarkers(cv_ptr->image, rejected, cv::noArray(), cv::Scalar(100, 0, 255));
 				}
 			}
 
-			//==-- draw results
+			//Only send the debug image once
 			if(send_debug) {	//TODO: & has subscribers
-				if(ids.size() > 0) {
-					cv::aruco::drawDetectedMarkers(cv_ptr->image, corners, ids);
-
-					if(estimatePose) {
-						for(unsigned int i = 0; i < ids.size(); i++)
-							cv::aruco::drawAxis(cv_ptr->image, camMatrix, distCoeffs, rvecs[i], tvecs[i], markerLength * 0.5f);
-					}
-				}
-
-				if(showRejected && rejected.size() > 0)
-					cv::aruco::drawDetectedMarkers(cv_ptr->image, rejected, cv::noArray(), cv::Scalar(100, 0, 255));
-
 				//==-- Output modified video stream
 				image_pub_.publish(cv_ptr->toImageMsg());
 			}
-
-
 		}
 };
 

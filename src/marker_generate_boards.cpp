@@ -2,9 +2,9 @@
 #include <opencv2/highgui.hpp>
 #include <ros/ros.h>
 
-#include <sstream>
 #include <vector>
 #include <string>
+#include <sstream>
 
 typedef enum {
 	DICT_4X4_50 = 0,
@@ -34,8 +34,8 @@ int main(int argc, char *argv[]) {
 	int num_boards = 0;
 
     int border_bits = 0;
-	double marker_size = 0.05;
-	double marker_spacing = 0.01;
+	double marker_size = 0;
+	double marker_spacing = 0;
 
 	int output_height = 0;
 	int output_width = 0;
@@ -50,43 +50,43 @@ int main(int argc, char *argv[]) {
 		ROS_INFO( "Generating boards is %s", output_directory.c_str() );
 	}
 
-	if( !nh.getParam( "num_boards", num_boards ) ) {
-		ROS_ERROR( "\"num_boards\" not set" );
+	if( !nh.getParam( "boards/num_boards", num_boards ) ) {
+		ROS_ERROR( "\"boards/num_boards\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating %i boards", num_boards );
 	}
 
-	if( !nh.getParam( "border_bits", border_bits ) ) {
-		ROS_ERROR( "\"border_bits\" not set" );
+	if( !nh.getParam( "boards/border_bits", border_bits ) ) {
+		ROS_ERROR( "\"boards/border_bits\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating using %i border spacing", border_bits );
 	}
 
-	if( !nh.getParam( "marker_size", marker_size ) ) {
-		ROS_ERROR( "\"marker_size\" not set" );
+	if( !nh.getParam( "boards/marker_size", marker_size ) ) {
+		ROS_ERROR( "\"boards/marker_size\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating markers at size %fm", marker_size );
 	}
 
-	if( !nh.getParam( "marker_spacing", marker_spacing ) ) {
-		ROS_ERROR( "\"marker_spacing\" not set" );
+	if( !nh.getParam( "boards/marker_spacing", marker_spacing ) ) {
+		ROS_ERROR( "\"boards/marker_spacing\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating markers with spacing %fm", marker_spacing );
 	}
 
-	if( !nh.getParam( "output_height", output_height ) ) {
-		ROS_ERROR( "\"output_height\" not set" );
+	if( !nh.getParam( "boards/output_height", output_height ) ) {
+		ROS_ERROR( "\"boards/output_height\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Output image will be %ipx in height", output_height );
 	}
 
-	if( !nh.getParam( "output_width", output_width ) ) {
-		ROS_ERROR( "\"output_width\" not set" );
+	if( !nh.getParam( "boards/output_width", output_width ) ) {
+		ROS_ERROR( "\"boards/output_width\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Output image will be %ipx in width", output_width );
@@ -101,22 +101,23 @@ int main(int argc, char *argv[]) {
 		std::stringstream board_name;
 		board_name << "board_" << i;
 
-		if( !nh.getParam( board_name.str() + "/rows" , rows ) ) {
+		if( !nh.getParam( "boards/" + board_name.str() + "/rows" , rows ) ) {
 			ROS_ERROR( "\"rows\" not set for board_%i", i );
 			return 1;
 		}
 
-		if( !nh.getParam( board_name.str() + "/cols" , cols ) ) {
+		if( !nh.getParam( "boards/" + board_name.str() + "/cols" , cols ) ) {
 			ROS_ERROR( "\"cols\" not set for board_%i", i );
 			return 1;
 		}
 
-		if( !nh.getParam( board_name.str() + "/ids" , ids ) ) {
+		if( !nh.getParam( "boards/" + board_name.str() + "/ids" , ids ) ) {
 			ROS_ERROR( "\"ids\" not set for board_%i", i );
 			return 1;
 		}
 
-		if( ( ( rows * cols ) == ids.size() ) || ( ( ids.size() == 0 ) ) ) {
+		//If the rows and cols are valid, and either the size matches number of ids (or generate ids)
+		if( ( ( ( rows * cols ) == ids.size() ) || ( ids.size() == 0 ) ) && ( rows > 0 ) && ( cols > 0 ) ) {
 			/*
 			if( ( rows * cols ) == 1 ) {	//The only 1 marker is needed for this "board"
 				int id = 0;

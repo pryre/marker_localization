@@ -1,25 +1,26 @@
 # Board configuration for the environment
 
-num_boards: 3
+boards:
+  num_boards: 3
 
-marker_size: 0.05
-marker_spacing: 0.01
-border_bits: 1
+  marker_size: 0.087
+  marker_spacing: 0.017
+  border_bits: 1
 
-output_height: 800
-output_width: 800
+  output_height: 800
+  output_width: 800
 
-board_0:
-  rows: 2
-  cols: 2
-  ids: [1, 10, 20, 30]
+  board_0:
+    rows: 2
+    cols: 2
+    ids: [31, 32, 33, 34]
 
-board_1:
-  rows: 1
-  cols: 1
-  ids: [5]
+  board_1:
+    rows: 2
+    cols: 3
+    ids: [25,26,27,28,29,30]
 
-board_2:
-  rows: 4
-  cols: 4
-  ids: []
+  board_2:
+    rows: 4
+    cols: 4
+    ids: []
