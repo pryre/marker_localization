@@ -131,7 +131,8 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(marker_detector_node src/marker_detector_node.cpp)
-add_executable(marker_create_node src/marker_create_node.cpp)
+add_executable(marker_dump_dictionary src/marker_dump_dictionary.cpp)
+add_executable(marker_generate_boards src/marker_generate_boards.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -142,7 +143,11 @@ target_link_libraries(marker_detector_node
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(marker_create_node
+target_link_libraries(marker_dump_dictionary
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(marker_generate_boards
   ${catkin_LIBRARIES}
 )
 

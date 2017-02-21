@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     int markerSize = 400;
 
     cv::Ptr<cv::aruco::Dictionary> dictionary =
-        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(DICT_4X4_50));
+        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(DICT_4X4_50));	//TODO: Dynamic!
 
 	for(int i = 0; i < dictionary->bytesList.rows; i++) {
 		std::stringstream out;
