@@ -1,5 +1,5 @@
 # marker_localization
-A collection of tools to perform localization in an unknown environment with definited markers
+A collection of tools to perform localization in an unknown environment with defined markers
 
 # Programs:
 - marker_create: Runs a small app that dumps the selected dictionary in the current directory
