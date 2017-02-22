@@ -31,6 +31,7 @@ int main(int argc, char *argv[]) {
 	ros::NodeHandle nh(ros::this_node::getName());
 
 	std::string output_directory;
+	int dictionaryId;
 	int num_boards = 0;
 
     int border_bits = 0;
@@ -40,8 +41,16 @@ int main(int argc, char *argv[]) {
 	int output_height = 0;
 	int output_width = 0;
 
+	if( !nh.getParam( "boards/dictionary_id", dictionaryId ) ) {
+		ROS_ERROR( "\"boards/dictionary_id\" not set" );
+		return 1;
+	} else {
+		ROS_INFO( "Using dictionary #%i", dictionaryId );
+	}
+
     cv::Ptr<cv::aruco::Dictionary> dictionary =
-        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(DICT_4X4_50));	//TODO: params
+        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));	//TODO: params
+	ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
 
 	if( !nh.getParam( "output_directory", output_directory ) ) {
 		ROS_ERROR( "\"output_directory\" not set" );

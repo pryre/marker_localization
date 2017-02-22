@@ -26,52 +26,32 @@ boards:
   # resolution when generating images
   #Sizes should reflect the real life marker sizes
   # when detecting
-  marker_size: 0.087
-  marker_spacing: 0.017
+  marker_size: 0.05
+  marker_spacing: 0.01
 
   border_bits: 1
 
   output_height: 800
   output_width: 800
 
-  num_boards: 8
+  num_boards: 4
 
   board_0:
     rows: 2
     cols: 2
-    ids: [0, 1, 2, 3]
+    ids: [31, 32, 33, 34]
 
   board_1:
     rows: 2
-    cols: 2
-    ids: [4, 5, 6, 7]
+    cols: 3
+    ids: [25,26,27,28,29,30]
 
   board_2:
-    rows: 2
-    cols: 2
-    ids: [8, 9, 10, 11]
+    rows: 1
+    cols: 1
+    ids: [49]
 
   board_3:
-    rows: 2
-    cols: 2
-    ids: [12, 13, 14, 15]
-
-  board_4:
-    rows: 2
-    cols: 2
-    ids: [16, 17, 18, 19]
-
-  board_5:
-    rows: 2
-    cols: 2
-    ids: [20, 21, 22, 23]
-
-  board_6:
-    rows: 2
-    cols: 2
-    ids: [24, 25, 26, 27]
-
-  board_7:
-    rows: 2
-    cols: 2
-    ids: [28, 29, 30, 31]
+    rows: 4
+    cols: 4
+    ids: []
