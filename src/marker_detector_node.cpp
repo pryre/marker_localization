@@ -59,6 +59,8 @@ class MarkerDetector {
 
 		bool got_camera_info;
 		bool send_debug;
+		bool camera_rectified;
+		bool refine_strategy;
 
 		std::vector< double > cam_info_K;
 		std::vector< double > cam_info_D;
@@ -78,12 +80,14 @@ class MarkerDetector {
 			loadParam(nh_, "debug_image_topic", debug_image_topic);
 			loadParam(nh_, "camera_info_topic", camera_info_topic);
 			loadParam(nh_, "input_image_topic", input_image_topic);
+			loadParam(nh_, "camera_is_rectified", camera_rectified);
 
 			// Subscrive to input video feed and publish output video feed
 			debug_image_pub_ = it_.advertise(debug_image_topic, 1);	//TODO: param
 
 			loadParam(nh_, "send_debug", send_debug);
 			loadParam(nh_, "show_rejected", show_rejected);
+			loadParam(nh_, "refine_strategy", refine_strategy);
 			loadParam(nh_, "boards/dictionary_id", dictionary_id);
 
 			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_id));
@@ -244,49 +248,31 @@ class MarkerDetector {
 		}
 
 		void readDetectorParameters(ros::NodeHandle &n, cv::Ptr<cv::aruco::DetectorParameters> &params) {
-			/*
-			params->adaptiveThreshWinSizeMin = 3;
-			params->adaptiveThreshWinSizeMax = 23;
-			params->adaptiveThreshWinSizeStep = 10;
-			params->adaptiveThreshConstant = 7;
-			params->minMarkerPerimeterRate = 0.03;
-			params->maxMarkerPerimeterRate = 4.0;
-			params->polygonalApproxAccuracyRate = 0.05;
-			params->minCornerDistanceRate = 10.0;
-			params->minDistanceToBorder = 3;
-			params->minMarkerDistanceRate = 0.05;
-			params->doCornerRefinement = true;
-			params->cornerRefinementWinSize = 11;
-			params->cornerRefinementMaxIterations = 30;
-			params->cornerRefinementMinAccuracy = 0.1;
-			params->markerBorderBits = 1;
-			params->perspectiveRemovePixelPerCell = 8;
-			params->perspectiveRemoveIgnoredMarginPerCell = 0.13;
-			params->maxErroneousBitsInBorderRate = 0.04;
-			params->minOtsuStdDev = 5.0;
-			params->errorCorrectionRate = 0.6;
-			*/
-
 			loadParam(n, "system/adaptive_thresh_win_size_min", params->adaptiveThreshWinSizeMin);
 			loadParam(n, "system/adaptive_thresh_win_size_max", params->adaptiveThreshWinSizeMax);
 			loadParam(n, "system/adaptive_thresh_win_size_step", params->adaptiveThreshWinSizeStep);
 			loadParam(n, "system/adaptive_thresh_constant", params->adaptiveThreshConstant);
+
 			loadParam(n, "system/min_marker_perimeter_rate", params->minMarkerPerimeterRate);
 			loadParam(n, "system/max_marker_perimeter_rate", params->maxMarkerPerimeterRate);
+
 			loadParam(n, "system/polygonal_approx_accuracy_rate", params->polygonalApproxAccuracyRate);
 			loadParam(n, "system/min_corner_distance_rate", params->minCornerDistanceRate);
-			loadParam(n, "system/min_distance_to_border", params->minDistanceToBorder);
 			loadParam(n, "system/min_marker_distance_rate", params->minMarkerDistanceRate);
+			loadParam(n, "system/min_distance_to_border", params->minDistanceToBorder);
+
+			loadParam(n, "system/marker_border_bits", params->markerBorderBits);
+			loadParam(n, "system/min_otsu_std_dev", params->minOtsuStdDev);
+			loadParam(n, "system/perspective_remove_pixel_per_cell", params->perspectiveRemovePixelPerCell);
+			loadParam(n, "system/perspective_remove_ignored_margin_per_cell", params->perspectiveRemoveIgnoredMarginPerCell);
+
+			loadParam(n, "system/max_erroneous_bits_in_border_rate", params->maxErroneousBitsInBorderRate);
+			loadParam(n, "system/error_correction_rate", params->errorCorrectionRate);
+
 			loadParam(n, "system/do_corner_refinement", params->doCornerRefinement);
 			loadParam(n, "system/corner_refinement_win_size", params->cornerRefinementWinSize);
 			loadParam(n, "system/corner_refinement_max_iterations", params->cornerRefinementMaxIterations);
 			loadParam(n, "system/corner_refinement_min_accuracy", params->cornerRefinementMinAccuracy);
-			loadParam(n, "system/marker_border_bits", params->markerBorderBits);
-			loadParam(n, "system/perspective_remove_pixel_per_cell", params->perspectiveRemovePixelPerCell);
-			loadParam(n, "system/perspective_remove_ignored_margin_per_cell", params->perspectiveRemoveIgnoredMarginPerCell);
-			loadParam(n, "system/max_erroneous_bits_in_border_rate", params->maxErroneousBitsInBorderRate);
-			loadParam(n, "system/min_otsu_std_dev", params->minOtsuStdDev);
-			loadParam(n, "system/error_correction_rate", params->errorCorrectionRate);
 		}
 
 		void camera_info_cb(const sensor_msgs::CameraInfoConstPtr& msg) {
@@ -294,8 +280,21 @@ class MarkerDetector {
 			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(dist_coeffs);	//Create a 3xN matrix with the raw data and copy the data to the right location
 
 			cv::Mat_<double> m;
-			for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
-				m.push_back( msg->K[i] );
+			if(camera_rectified) {
+				m.push_back(msg->P[0]);
+				m.push_back(msg->P[1]);
+				m.push_back(msg->P[2]);
+				m.push_back(msg->P[4]);
+				m.push_back(msg->P[5]);
+				m.push_back(msg->P[6]);
+				m.push_back(msg->P[8]);
+				m.push_back(msg->P[9]);
+				m.push_back(msg->P[10]);
+			} else {
+				for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
+					m.push_back( msg->K[i] );
+			}
+
 			m.reshape(0,3).copyTo(camera_matrix);	//Reshape to 3x3 and copy the data to the right location
 
 			got_camera_info = true;	//Allow processing to begin
@@ -330,11 +329,6 @@ class MarkerDetector {
 
 					//ROS_INFO("Detecting for board %i", i);
 
-					//TODO: Consider doing marker refinement
-					//TODO: Also note about exactly where this should be placed from original source before use
-					//if(refindStrategy)
-					//    aruco::refineDetectedMarkers(image, board, corners, ids, rejected, camMatrix, distCoeffs);
-
 					//TODO: Maybe worth having a throttled message to keep track of average performance
 
 					if(board_list.at(i)->ids.size() == 1) {	//If the defined board is only 1 id
@@ -359,6 +353,9 @@ class MarkerDetector {
 							tvec = tvecs.at(0);
 						}
 					} else {	//Else it is a multi-marker board
+						if(refine_strategy)
+						    cv::aruco::refineDetectedMarkers(cv_ptr->image, board_list[i], corners, ids, rejected, camera_matrix, dist_coeffs);
+
 						markersOfBoardDetected = cv::aruco::estimatePoseBoard(corners, ids, board_list[i], camera_matrix, dist_coeffs, rvec, tvec);
 
 						if(markersOfBoardDetected > 0) {
