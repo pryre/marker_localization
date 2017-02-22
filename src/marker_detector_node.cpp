@@ -12,27 +12,8 @@
 
 #include <vector>
 #include <string>
-#include <sstream>
-
-typedef enum {
-	DICT_4X4_50 = 0,
-	DICT_4X4_100,
-	DICT_4X4_250,
-	DICT_4X4_1000,
-	DICT_5X5_50,
-	DICT_5X5_100,
-	DICT_5X5_250,
-	DICT_5X5_1000,
-	DICT_6X6_50,
-	DICT_6X6_100,
-	DICT_6X6_250,
-	DICT_6X6_1000,
-	DICT_7X7_50,
-	DICT_7X7_100,
-	DICT_7X7_250,
-	DICT_7X7_1000,
-	DICT_ARUCO_ORIGINAL
-} aruco_dictionaries;
+#include <map>
+#include <sstream>	//TODO: See if we can remove this
 
 //static const std::string OPENCV_WINDOW = "Image window";
 
@@ -45,11 +26,8 @@ class MarkerDetector {
 		ros::Subscriber camera_info_sub_;
 		ros::Publisher marker_pub_;
 
-
 		cv::Ptr<cv::aruco::Dictionary> dictionary;
 		cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
-
-		int dictionary_id;
 
 		int marker_seq;
 		int debug_seq;
@@ -70,10 +48,15 @@ class MarkerDetector {
 		cv::Mat dist_coeffs;
 
 		std::vector< cv::Ptr< cv::aruco::Board > > board_list;
-		std::vector< cv::Vec2d > board_sizes;
+
+		//[ {board_id, rows, cols}, ... ]
+		std::vector< std::map< std::string, int > > board_definitions;	//TODO: Might be better to use this as a temporary storage, and use vectors in the back end
 
 	public:
 		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_) {
+			map<std::string,int> dictionary_ids = generate_dictionary_ids();
+			std::string dictionary_id;
+			loadParam(nh_, "board_config/dictionary", dictionary_id);
 
 			std::string marker_topic = "markers";
 			std::string debug_image_topic = "image_debug";
@@ -97,7 +80,7 @@ class MarkerDetector {
 			loadParam(nh_, "refine_strategy", refine_strategy);
 			loadParam(nh_, "boards/dictionary_id", dictionary_id);
 
-			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_id));
+			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));
 			ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
 
 			detectorParams = cv::aruco::DetectorParameters::create();
@@ -132,6 +115,29 @@ class MarkerDetector {
 		}
 
 		~MarkerDetector() {
+		}
+
+		map<std::string,int> generate_dictionary_ids() {
+			map<std::string,int> dict;
+			dict["DICT_4X4_50"] = 0;
+			dict["DICT_4X4_100"] = 1;
+			dict["DICT_4X4_250"] = 2;
+			dict["DICT_4X4_1000"] = 3;
+			dict["DICT_5X5_50"] = 4;
+			dict["DICT_5X5_100"] = 5;
+			dict["DICT_5X5_250"] = 6;
+			dict["DICT_5X5_1000"] = 7;
+			dict["DICT_6X6_50"] = 8;
+			dict["DICT_6X6_100"] = 9;
+			dict["DICT_6X6_250"] = 10;
+			dict["DICT_6X6_1000"] = 11;
+			dict["DICT_7X7_50"] = 12;
+			dict["DICT_7X7_100"] = 13;
+			dict["DICT_7X7_250"] = 14;
+			dict["DICT_7X7_1000"] = 15;
+			dict["DICT_ARUCO_ORIGINAL"] = 16;
+
+			return dict;
 		}
 
 		//Pulled shamelessly from ar_sys (Sahloul)
@@ -210,46 +216,27 @@ class MarkerDetector {
 		}
 
 		bool readBoardDefinitions(ros::NodeHandle &n) {
-			int num_boards;
-				bool check = true;
+			bool generate_board_ids = false;
+			bool check = true;
+			int marker_id_gen = 0;
 
-			loadParam(n, "boards/num_boards", num_boards);
+			n.getParam( "boards", board_definitions );
+			if(board_definitions.at(0)["board_id"] < 0)
+				generate_board_ids = true;
 
-			for(int i = 0; i < num_boards; i++) {
-				int rows = 0;
-				int cols = 0;
-				std::vector<int> ids;
+			for(int i = 0; i < board_definitions.size(); i++) {
+				ROS_ASSERT_MSG( ( (board_definitions.at(i)["board_id"] >= 0) && !generate_board_ids), "All board_ids must be definied or -1");
 
-				std::stringstream board_name;
-				board_name << "boards/board_" << i;
+				if(generate_board_ids)
+					board_definitions.at(i)["board_id"] = i; //Just use the cound as the board_ids
 
-				check &= n.getParam( board_name.str() + "/rows" , rows );
-				check &= n.getParam( board_name.str() + "/cols" , cols );
-				check &= n.getParam( board_name.str() + "/ids" , ids );
+					cv::Ptr<cv::aruco::GridBoard> gridboard =
+						cv::aruco::GridBoard::create(board_definitions.at(i)["rows"], board_definitions.at(i)["cols"], marker_size, marker_spacing, dictionary);
 
-				//If the rows and cols are valid, and either the size matches number of ids (or generate ids)
-				if( ( ( ( rows * cols ) == ids.size() ) || ( ids.size() == 0 ) ) && ( rows > 0 ) && ( cols > 0 ) ) {
-					if(check) {	//All parameters loaded correctly
-						cv::Vec2d temp_size;
-						temp_size[0] = rows;
-						temp_size[1] = cols;
-						board_sizes.push_back(temp_size);
+					for(int j = 0; j < ( board_definitions.at(i)["rows"] * board_definitions.at(i)["cols"] ); j++) {
+						gridboard->ids.push_back(marker_id_gen++);	//insert the next generated marker id, then increment
 
-						cv::Ptr<cv::aruco::GridBoard> gridboard =
-							cv::aruco::GridBoard::create(rows, cols, marker_size, marker_spacing, dictionary);
-
-						if(ids.size() > 0)
-							gridboard->ids = ids;
-
-						board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );
-					} else {
-						ROS_ERROR("Definition of board %i has an error!", i);
-						check = false;
-					}
-				} else {
-					ROS_ERROR("List of ids is not empty, and does not match rows * cols, or they are is invalid");
-					check = false;
-				}
+					board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );	//Add the board to the list
 			}
 
 			return check;	//Definitions loaded OK!
@@ -371,8 +358,8 @@ class MarkerDetector {
 							cv::Vec3d adj_vec;
 
 							//Adjust the calculated position to move it to the center of the board
-							adj_vec[0] = ( ( board_sizes.at(i)[0] / 2 ) * marker_size ) + ( ( board_sizes.at(i)[0] - 1 ) * marker_spacing / 2 );
-							adj_vec[1] = ( ( board_sizes.at(i)[1] / 2 ) * marker_size ) + ( ( board_sizes.at(i)[1] - 1 ) * marker_spacing / 2 );
+							adj_vec[0] = ( ( board_definitions.at(i)["rows"] / 2 ) * marker_size ) + ( ( board_definitions.at(i)["rows"] - 1 ) * marker_spacing / 2 );
+							adj_vec[1] = ( ( board_definitions.at(i)["cols"] / 2 ) * marker_size ) + ( ( board_definitions.at(i)["cols"] - 1 ) * marker_spacing / 2 );
 							adj_vec[2] = 0;
 
 							//Rotate the adjustment to match the camera frame
@@ -392,8 +379,8 @@ class MarkerDetector {
 						marker_out.header.frame_id = msg->header.frame_id;
 						marker_out.header.seq = ++marker_seq;
 
-						marker_out.marker.ids.push_back(i);	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
-						marker_out.marker.ids_confidence = ( (double)( board_sizes.at(i)[0] * board_sizes.at(i)[1] ) ) / markersOfBoardDetected;	//Return the ratio of markers found for this board
+						marker_out.marker.ids.push_back(board_definitions.at(i)["board_id"]);	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
+						marker_out.marker.ids_confidence = ( (double)( board_definitions.at(i)["rows"] * board_definitions.at(i)["cols"] ) ) / markersOfBoardDetected;	//Return the ratio of markers found for this board
 						transformTFToMsg(getTF(cv::Mat(rvec), cv::Mat(tvec)), marker_out.marker.pose);
 
 						marker_pub_.publish(marker_out);
