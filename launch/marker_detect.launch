@@ -5,6 +5,9 @@
 		<param name="show_rejected" value="false" type="boolean"/>
 		<param name="refine_strategy" value="true" type="boolean"/>
 
+		<!-- Marker Parameters -->
+		<param name="marker_topic" value="markers" type="str"/>
+
 		<!-- Image Parameters -->
 		<param name="debug_image_topic" value="image_debug" type="str"/>
 		<param name="camera_info_topic" value="/usb_cam/camera_info" type="str"/>

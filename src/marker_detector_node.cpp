@@ -1,11 +1,11 @@
 #include <ros/ros.h>
 
-#include <tf/tf.h>
-#include <tf/transform_broadcaster.h>
-
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/MarkerStamped.h>
+#include <geometry_msgs/Pose.h>
+#include <tf/tf.h>
 
 #include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
@@ -41,17 +41,18 @@ class MarkerDetector {
 		ros::NodeHandle nh_;
 		image_transport::ImageTransport it_;
 		image_transport::Subscriber image_sub_;
-		ros::Subscriber camera_info_sub_;
 		image_transport::Publisher debug_image_pub_;
+		ros::Subscriber camera_info_sub_;
+		ros::Publisher marker_pub_;
 
-		tf::TransformBroadcaster tfbr_;
 
 		cv::Ptr<cv::aruco::Dictionary> dictionary;
 		cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
 
 		int dictionary_id;
 
-		bool show_rejected;
+		int marker_seq;
+		int debug_seq;
 
 		int border_bits;
 		double marker_size;
@@ -59,6 +60,7 @@ class MarkerDetector {
 
 		bool got_camera_info;
 		bool send_debug;
+		bool show_rejected;
 		bool camera_rectified;
 		bool refine_strategy;
 
@@ -73,17 +75,22 @@ class MarkerDetector {
 	public:
 		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_) {
 
+			std::string marker_topic = "markers";
 			std::string debug_image_topic = "image_debug";
 			std::string camera_info_topic = "/camera_info";
 			std::string input_image_topic = "/image";
 
 			loadParam(nh_, "debug_image_topic", debug_image_topic);
+			loadParam(nh_, "marker_topic", marker_topic);
 			loadParam(nh_, "camera_info_topic", camera_info_topic);
 			loadParam(nh_, "input_image_topic", input_image_topic);
 			loadParam(nh_, "camera_is_rectified", camera_rectified);
 
+			marker_seq = 0;
+			debug_seq = 0;
+
 			// Subscrive to input video feed and publish output video feed
-			debug_image_pub_ = it_.advertise(debug_image_topic, 1);	//TODO: param
+			debug_image_pub_ = it_.advertise(debug_image_topic, 1);
 
 			loadParam(nh_, "send_debug", send_debug);
 			loadParam(nh_, "show_rejected", show_rejected);
@@ -106,7 +113,8 @@ class MarkerDetector {
 				ROS_INFO("Board definitions read sucessfully!");
 			}
 
-			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );	//TODO: param
+			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );
+			marker_pub_ = nh_.publish<marker_msgs::MarkerStamped> (marker_topic, 100);
 
 			ROS_INFO("Waiting for camera info...");
 			got_camera_info = false;	//A check to see if we have received distortion and camera data
@@ -120,7 +128,7 @@ class MarkerDetector {
 
 			ROS_INFO("Begining detection...");
 
-			image_sub_ = it_.subscribe(input_image_topic, 1, &MarkerDetector::image_cb, this);	//TODO: param
+			image_sub_ = it_.subscribe(input_image_topic, 1, &MarkerDetector::image_cb, this);
 		}
 
 		~MarkerDetector() {
@@ -379,10 +387,16 @@ class MarkerDetector {
 
 					if(markersOfBoardDetected > 0) {
 						//Transmit the transformations
-						std::stringstream board_name;
-						board_name << "board_" << i;
+						marker_msgs::MarkerStamped marker_out;
+						marker_out.header.stamp = msg->header.stamp;
+						marker_out.header.frame_id = msg->header.frame_id;
+						marker_out.header.seq = ++marker_seq;
 
-						tfbr_.sendTransform(tf::StampedTransform(getTF(cv::Mat(rvec), cv::Mat(tvec)), msg->header.stamp, msg->header.frame_id, board_name.str()));
+						marker_out.marker.ids.push_back(i);	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
+						marker_out.marker.ids_confidence = ( (double)( board_sizes.at(i)[0] * board_sizes.at(i)[1] ) ) / markersOfBoardDetected;	//Return the ratio of markers found for this board
+						transformTFToMsg(getTF(cv::Mat(rvec), cv::Mat(tvec)), marker_out.marker.pose);
+
+						marker_pub_.publish(marker_out);
 
 						//==-- draw results
 						if(send_debug && (debug_image_pub_.getNumSubscribers() > 0) ) {
