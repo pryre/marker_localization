@@ -4,35 +4,40 @@
 
 #include <vector>
 #include <string>
-#include <sstream>
+#include <map>
 
-typedef enum {
-	DICT_4X4_50 = 0,
-	DICT_4X4_100,
-	DICT_4X4_250,
-	DICT_4X4_1000,
-	DICT_5X5_50,
-	DICT_5X5_100,
-	DICT_5X5_250,
-	DICT_5X5_1000,
-	DICT_6X6_50,
-	DICT_6X6_100,
-	DICT_6X6_250,
-	DICT_6X6_1000,
-	DICT_7X7_50,
-	DICT_7X7_100,
-	DICT_7X7_250,
-	DICT_7X7_1000,
-	DICT_ARUCO_ORIGINAL
-} aruco_dictionaries;
+std::map< std::string, int > generate_dictionary_ids() {
+	std::map< std::string, int > dict;
+	dict["DICT_4X4_50"] = 0;
+	dict["DICT_4X4_100"] = 1;
+	dict["DICT_4X4_250"] = 2;
+	dict["DICT_4X4_1000"] = 3;
+	dict["DICT_5X5_50"] = 4;
+	dict["DICT_5X5_100"] = 5;
+	dict["DICT_5X5_250"] = 6;
+	dict["DICT_5X5_1000"] = 7;
+	dict["DICT_6X6_50"] = 8;
+	dict["DICT_6X6_100"] = 9;
+	dict["DICT_6X6_250"] = 10;
+	dict["DICT_6X6_1000"] = 11;
+	dict["DICT_7X7_50"] = 12;
+	dict["DICT_7X7_100"] = 13;
+	dict["DICT_7X7_250"] = 14;
+	dict["DICT_7X7_1000"] = 15;
+	dict["DICT_ARUCO_ORIGINAL"] = 16;
+
+	return dict;
+}
 
 int main(int argc, char *argv[]) {
 	ros::init(argc, argv, "marker_generate_boards");
 	ros::NodeHandle nh(ros::this_node::getName());
 
 	std::string output_directory;
-	int dictionaryId;
-	int num_boards = 0;
+
+	std::map< std::string, int > dictionary_ids = generate_dictionary_ids();
+	std::string dictionary_id;
+
 
     int border_bits = 0;
 	double marker_size = 0;
@@ -41,15 +46,15 @@ int main(int argc, char *argv[]) {
 	int output_height = 0;
 	int output_width = 0;
 
-	if( !nh.getParam( "boards/dictionary_id", dictionaryId ) ) {
-		ROS_ERROR( "\"boards/dictionary_id\" not set" );
+	if( !nh.getParam( "board_config/dictionary", dictionary_id ) ) {
+		ROS_ERROR( "\"board_config/dictionary\" not set" );
 		return 1;
 	} else {
-		ROS_INFO( "Using dictionary #%i", dictionaryId );
+		ROS_INFO( "Using dictionary %s", dictionary_id.c_str() );
 	}
 
     cv::Ptr<cv::aruco::Dictionary> dictionary =
-        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));	//TODO: params
+        cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));	//TODO: params
 	ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
 
 	if( !nh.getParam( "output_directory", output_directory ) ) {
@@ -59,107 +64,95 @@ int main(int argc, char *argv[]) {
 		ROS_INFO( "Generating boards is %s", output_directory.c_str() );
 	}
 
-	if( !nh.getParam( "boards/num_boards", num_boards ) ) {
-		ROS_ERROR( "\"boards/num_boards\" not set" );
-		return 1;
-	} else {
-		ROS_INFO( "Generating %i boards", num_boards );
-	}
-
-	if( !nh.getParam( "boards/border_bits", border_bits ) ) {
-		ROS_ERROR( "\"boards/border_bits\" not set" );
+	if( !nh.getParam( "board_config/border_bits", border_bits ) ) {
+		ROS_ERROR( "\"board_config/border_bits\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating using %i border spacing", border_bits );
 	}
 
-	if( !nh.getParam( "boards/marker_size", marker_size ) ) {
-		ROS_ERROR( "\"boards/marker_size\" not set" );
+	if( !nh.getParam( "board_config/marker_size", marker_size ) ) {
+		ROS_ERROR( "\"board_config/marker_size\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating markers at size %fm", marker_size );
 	}
 
-	if( !nh.getParam( "boards/marker_spacing", marker_spacing ) ) {
-		ROS_ERROR( "\"boards/marker_spacing\" not set" );
+	if( !nh.getParam( "board_config/marker_spacing", marker_spacing ) ) {
+		ROS_ERROR( "\"board_config/marker_spacing\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Generating markers with spacing %fm", marker_spacing );
 	}
 
-	if( !nh.getParam( "boards/output_height", output_height ) ) {
-		ROS_ERROR( "\"boards/output_height\" not set" );
+	if( !nh.getParam( "board_config/output_height", output_height ) ) {
+		ROS_ERROR( "\"board_config/output_height\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Output image will be %ipx in height", output_height );
 	}
 
-	if( !nh.getParam( "boards/output_width", output_width ) ) {
-		ROS_ERROR( "\"boards/output_width\" not set" );
+	if( !nh.getParam( "board_config/output_width", output_width ) ) {
+		ROS_ERROR( "\"board_config/output_width\" not set" );
 		return 1;
 	} else {
 		ROS_INFO( "Output image will be %ipx in width", output_width );
 	}
 
-	for(int i = 0; i < num_boards; i++) {
-		ROS_INFO( "Generating board_%i", i );
+	int board_id_gen = 0;
+	int marker_id_gen = 0;
+	int i = 0;
+	std::string board_name = "board_";
 
+	while(nh.hasParam( "boards/" + board_name + std::to_string(i) + "/id")) {
 		int rows = 0;
 		int cols = 0;
-		std::vector<int> ids;
-		std::stringstream board_name;
-		board_name << "board_" << i;
+		int board_id = 0;
 
-		if( !nh.getParam( "boards/" + board_name.str() + "/rows" , rows ) ) {
-			ROS_ERROR( "\"rows\" not set for board_%i", i );
-			return 1;
-		}
+		ROS_INFO("Loading configuration for board %i...", i);
 
-		if( !nh.getParam( "boards/" + board_name.str() + "/cols" , cols ) ) {
-			ROS_ERROR( "\"cols\" not set for board_%i", i );
-			return 1;
-		}
+		nh.getParam( "boards/" + board_name + std::to_string(i) + "/rows", rows );
+		nh.getParam( "boards/" + board_name + std::to_string(i) + "/cols", cols );
 
-		if( !nh.getParam( "boards/" + board_name.str() + "/ids" , ids ) ) {
-			ROS_ERROR( "\"ids\" not set for board_%i", i );
-			return 1;
-		}
+		ROS_INFO("  Setting board_%i size: [%i, %i]", i, rows, cols);
 
-		//If the rows and cols are valid, and either the size matches number of ids (or generate ids)
-		if( ( ( ( rows * cols ) == ids.size() ) || ( ids.size() == 0 ) ) && ( rows > 0 ) && ( cols > 0 ) ) {
-			/*
-			if( ( rows * cols ) == 1 ) {	//The only 1 marker is needed for this "board"
-				int id = 0;
-
-				if( ids.size() > 0 )
-					id = ids.at(0);
-
-				std::stringstream out;
-				out << "./marker_4x4_" << i << ".png";
-
-				cv::Mat markerImg;
-				cv::aruco::drawMarker(dictionary, i, output_width, markerImg, borderBits);
-				cv::imwrite(out.str(), markerImg);
-			} else { }
-			*/
-
-			 cv::Ptr<cv::aruco::GridBoard> board =
-				cv::aruco::GridBoard::create(rows, cols, marker_size, marker_spacing, dictionary);
-
-			if(ids.size() > 0)
-				board->ids = ids;
-
-			cv::Mat boardImage;
-			board->draw( cv::Size(output_width, output_height), boardImage, 10, border_bits );
-
-			std::stringstream out;
-			out << output_directory << board_name.str() << ".png";
-			cv::imwrite(out.str(), boardImage);
-
+		int temp_id = 0;
+		nh.getParam( "boards/" + board_name + std::to_string(i) + "/id", temp_id );
+		if(temp_id < 0) {
+			board_id = board_id_gen++;	//Use the next free id and increment
 		} else {
-			ROS_ERROR( "\"ids\" length does not match specified size for board_%i", i );
-			return 1;
+			board_id = temp_id;
+			board_id_gen = temp_id + 1;	//Set the new free id
 		}
+		ROS_INFO("  Setting board_%i id: %i", i, board_id);
+
+		cv::Ptr<cv::aruco::GridBoard> gridboard =
+			cv::aruco::GridBoard::create(rows, cols, marker_size, marker_spacing, dictionary);
+
+		std::vector< int > temp_marker_ids;
+		nh.getParam( "boards/" + board_name + std::to_string(i) + "/marker_ids", temp_marker_ids );
+		if(temp_marker_ids.size() < 1) {
+			for(int j = 0; j < ( rows * cols ); j++)
+				temp_marker_ids.push_back(marker_id_gen++);	//insert the next generated marker id, then increment
+
+			gridboard->ids = temp_marker_ids;
+			ROS_INFO("  Generating board_%i %li marker_ids", i, gridboard->ids.size());
+		} else {
+			gridboard->ids = temp_marker_ids;
+
+			ROS_INFO("  Setting board_%i %li marker_ids", i, gridboard->ids.size());
+
+			for (unsigned int j = 0; j < temp_marker_ids.size(); j++)	//Search to see if there was a higher marker defined
+				if (temp_marker_ids.at(j) > marker_id_gen)
+					marker_id_gen = temp_marker_ids.at(j) + 1;	//If there was, the next id as the new free id
+		}
+
+		cv::Mat boardImage;
+		gridboard->draw( cv::Size(output_width, output_height), boardImage, 10, border_bits );
+
+		cv::imwrite(output_directory + board_name + std::to_string(i) + ".png", boardImage);
+
+		i++;
 	}
 
     return 0;

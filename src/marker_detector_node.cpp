@@ -3,7 +3,7 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-#include <sensor_msgs/MarkerStamped.h>
+#include <marker_msgs/MarkerStamped.h>
 #include <geometry_msgs/Pose.h>
 #include <tf/tf.h>
 
@@ -13,9 +13,14 @@
 #include <vector>
 #include <string>
 #include <map>
-#include <sstream>	//TODO: See if we can remove this
 
 //static const std::string OPENCV_WINDOW = "Image window";
+
+typedef enum {
+	BC_ID = 0,
+	BC_ROWS,
+	BC_COLS
+} board_config_names;
 
 class MarkerDetector {
 	private:
@@ -48,13 +53,11 @@ class MarkerDetector {
 		cv::Mat dist_coeffs;
 
 		std::vector< cv::Ptr< cv::aruco::Board > > board_list;
-
-		//[ {board_id, rows, cols}, ... ]
-		std::vector< std::map< std::string, int > > board_definitions;	//TODO: Might be better to use this as a temporary storage, and use vectors in the back end
+		std::vector< std::vector< int > > board_configs;
 
 	public:
-		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_) {
-			map<std::string,int> dictionary_ids = generate_dictionary_ids();
+		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_), got_camera_info(false) {
+			std::map< std::string, int > dictionary_ids = generate_dictionary_ids();
 			std::string dictionary_id;
 			loadParam(nh_, "board_config/dictionary", dictionary_id);
 
@@ -78,7 +81,6 @@ class MarkerDetector {
 			loadParam(nh_, "send_debug", send_debug);
 			loadParam(nh_, "show_rejected", show_rejected);
 			loadParam(nh_, "refine_strategy", refine_strategy);
-			loadParam(nh_, "boards/dictionary_id", dictionary_id);
 
 			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));
 			ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
@@ -97,10 +99,9 @@ class MarkerDetector {
 			}
 
 			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );
-			marker_pub_ = nh_.publish<marker_msgs::MarkerStamped> (marker_topic, 100);
+			marker_pub_ = nh_.advertise<marker_msgs::MarkerStamped> (marker_topic, 100);
 
 			ROS_INFO("Waiting for camera info...");
-			got_camera_info = false;	//A check to see if we have received distortion and camera data
 
 			while(!got_camera_info && ros::ok()) {
 				ros::spinOnce();
@@ -117,8 +118,8 @@ class MarkerDetector {
 		~MarkerDetector() {
 		}
 
-		map<std::string,int> generate_dictionary_ids() {
-			map<std::string,int> dict;
+		std::map< std::string, int > generate_dictionary_ids() {
+			std::map< std::string, int > dict;
 			dict["DICT_4X4_50"] = 0;
 			dict["DICT_4X4_100"] = 1;
 			dict["DICT_4X4_250"] = 2;
@@ -208,38 +209,65 @@ class MarkerDetector {
 		}
 
 		bool readBoardConfig(ros::NodeHandle &n) {
-			loadParam(n, "boards/border_bits", border_bits);
-			loadParam(n, "boards/marker_size", marker_size);
-			loadParam(n, "boards/marker_spacing", marker_spacing);
+			loadParam(n, "board_config/border_bits", border_bits);
+			loadParam(n, "board_config/marker_size", marker_size);
+			loadParam(n, "board_config/marker_spacing", marker_spacing);
 
 			return (border_bits > 0) && (marker_size > 0) && (marker_spacing > 0);
 		}
 
 		bool readBoardDefinitions(ros::NodeHandle &n) {
-			bool generate_board_ids = false;
-			bool check = true;
+			int board_id_gen = 0;
 			int marker_id_gen = 0;
+			int i = 0;
+			std::string board_name = "boards/board_";
 
-			n.getParam( "boards", board_definitions );
-			if(board_definitions.at(0)["board_id"] < 0)
-				generate_board_ids = true;
+			while(n.hasParam( board_name + std::to_string(i) + "/id")) {
+				ROS_INFO("Loading configuration for board %i...", i);
+				board_configs.push_back(std::vector< int >(3));
 
-			for(int i = 0; i < board_definitions.size(); i++) {
-				ROS_ASSERT_MSG( ( (board_definitions.at(i)["board_id"] >= 0) && !generate_board_ids), "All board_ids must be definied or -1");
+				n.getParam( board_name + std::to_string(i) + "/rows", board_configs.at(i).at(BC_ROWS) );
+				n.getParam( board_name + std::to_string(i) + "/cols", board_configs.at(i).at(BC_COLS) );
 
-				if(generate_board_ids)
-					board_definitions.at(i)["board_id"] = i; //Just use the cound as the board_ids
+				//ROS_ASSERT(((board_configs.at(i).at(BC_ROWS) > 0) && (board_configs.at(i).at(BC_COLS) > 0), "Rows and cols must be valid integers (>0)"
+				ROS_INFO("  Setting board_%i size: [%i, %i]", i, board_configs.at(i).at(BC_ROWS), board_configs.at(i).at(BC_COLS));
 
-					cv::Ptr<cv::aruco::GridBoard> gridboard =
-						cv::aruco::GridBoard::create(board_definitions.at(i)["rows"], board_definitions.at(i)["cols"], marker_size, marker_spacing, dictionary);
+				int temp_id = 0;
+				n.getParam( board_name + std::to_string(i) + "/id", temp_id );
+				if(temp_id < 0) {
+					board_configs.at(i).at(BC_ID) = board_id_gen++;	//Use the next free id and increment
+				} else {
+					board_configs.at(i).at(BC_ID) = temp_id;
+					board_id_gen = temp_id + 1;	//Set the new free id
+				}
+				ROS_INFO("  Setting board_%i id: %i", i, board_configs.at(i).at(BC_ID));
 
-					for(int j = 0; j < ( board_definitions.at(i)["rows"] * board_definitions.at(i)["cols"] ); j++) {
-						gridboard->ids.push_back(marker_id_gen++);	//insert the next generated marker id, then increment
+				cv::Ptr<cv::aruco::GridBoard> gridboard =
+					cv::aruco::GridBoard::create(board_configs.at(i).at(BC_ROWS), board_configs.at(i).at(BC_COLS), marker_size, marker_spacing, dictionary);
 
-					board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );	//Add the board to the list
+				std::vector< int > temp_marker_ids;
+				n.getParam( board_name + std::to_string(i) + "/marker_ids", temp_marker_ids );
+				if(temp_marker_ids.size() < 1) {
+					for(int j = 0; j < ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ); j++)
+						temp_marker_ids.push_back(marker_id_gen++);	//insert the next generated marker id, then increment
+
+					gridboard->ids = temp_marker_ids;
+					ROS_INFO("  Generating board_%i %li marker_ids", i, gridboard->ids.size());
+				} else {
+					gridboard->ids = temp_marker_ids;
+
+					ROS_INFO("  Setting board_%i %li marker_ids", i, gridboard->ids.size());
+
+					for (unsigned int j = 0; j < temp_marker_ids.size(); j++)	//Search to see if there was a higher marker defined
+						if (temp_marker_ids.at(j) > marker_id_gen)
+							marker_id_gen = temp_marker_ids.at(j) + 1;	//If there was, the next id as the new free id
+				}
+
+				board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );	//Add the board to the list
+				i++;
 			}
 
-			return check;	//Definitions loaded OK!
+			return (i > 0);	//Definitions loaded OK!
 		}
 
 		void readDetectorParameters(ros::NodeHandle &n, cv::Ptr<cv::aruco::DetectorParameters> &params) {
@@ -358,8 +386,8 @@ class MarkerDetector {
 							cv::Vec3d adj_vec;
 
 							//Adjust the calculated position to move it to the center of the board
-							adj_vec[0] = ( ( board_definitions.at(i)["rows"] / 2 ) * marker_size ) + ( ( board_definitions.at(i)["rows"] - 1 ) * marker_spacing / 2 );
-							adj_vec[1] = ( ( board_definitions.at(i)["cols"] / 2 ) * marker_size ) + ( ( board_definitions.at(i)["cols"] - 1 ) * marker_spacing / 2 );
+							adj_vec[0] = ( ( board_configs.at(i).at(BC_ROWS) / 2 ) * marker_size ) + ( ( board_configs.at(i).at(BC_ROWS) - 1 ) * marker_spacing / 2 );
+							adj_vec[1] = ( ( board_configs.at(i).at(BC_COLS) / 2 ) * marker_size ) + ( ( board_configs.at(i).at(BC_COLS) - 1 ) * marker_spacing / 2 );
 							adj_vec[2] = 0;
 
 							//Rotate the adjustment to match the camera frame
@@ -379,9 +407,9 @@ class MarkerDetector {
 						marker_out.header.frame_id = msg->header.frame_id;
 						marker_out.header.seq = ++marker_seq;
 
-						marker_out.marker.ids.push_back(board_definitions.at(i)["board_id"]);	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
-						marker_out.marker.ids_confidence = ( (double)( board_definitions.at(i)["rows"] * board_definitions.at(i)["cols"] ) ) / markersOfBoardDetected;	//Return the ratio of markers found for this board
-						transformTFToMsg(getTF(cv::Mat(rvec), cv::Mat(tvec)), marker_out.marker.pose);
+						marker_out.marker.ids.push_back(board_configs.at(i).at(BC_ID));	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
+						marker_out.marker.ids_confidence.push_back( ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ) );	//Return the ratio of markers found for this board
+						poseTFToMsg(getTF(cv::Mat(rvec), cv::Mat(tvec)), marker_out.marker.pose);
 
 						marker_pub_.publish(marker_out);
 

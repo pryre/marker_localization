@@ -1,31 +1,19 @@
 # Board configuration for the environment
 
 
-boards:
+board_config:
   #Possible dictionaries:
-  # DICT_4X4_50: 0
-  # DICT_4X4_100: 1
-  # DICT_4X4_250: 2
-  # DICT_4X4_1000: 3
-  # DICT_5X5_50: 4
-  # DICT_5X5_100: 5
-  # DICT_5X5_250: 6
-  # DICT_5X5_1000: 7
-  # DICT_6X6_50: 8
-  # DICT_6X6_100: 9
-  # DICT_6X6_250: 10
-  # DICT_6X6_1000: 11
-  # DICT_7X7_50: 12
-  # DICT_7X7_100: 13
-  # DICT_7X7_250: 14
-  # DICT_7X7_1000: 15
-  # DICT_ARUCO_ORIGINAL: 16
-  dictionary_id: 0
+  # DICT_4X4_50, DICT_4X4_100, DICT_4X4_250, DICT_4X4_1000
+  # DICT_5X5_50, DICT_5X5_100, DICT_5X5_250, DICT_5X5_1000
+  # DICT_6X6_50, DICT_6X6_100, DICT_6X6_250, DICT_6X6_1000
+  # DICT_7X7_50, DICT_7X7_100, DICT_7X7_250, DICT_7X7_1000
+  # DICT_ARUCO_ORIGINAL
+  dictionary: DICT_5X5_50
 
-  #Sizes should be set to some factor of the output
-  # resolution when generating images
-  #Sizes should reflect the real life marker sizes
-  # when detecting
+  # Sizes should be set to some factor of the output
+  #  resolution when generating images
+  # Sizes should reflect the real life marker sizes
+  #  when detecting
   marker_size: 0.087
   marker_spacing: 0.017
 
@@ -34,44 +22,30 @@ boards:
   output_height: 800
   output_width: 800
 
-  num_boards: 8
-
+# Set board_id: -1 for these to be incrementally generated.
+# Boards should be organized by id (with -1's at tail of list)
+# Be aware of dictionary limitations as this will throw
+#  errors if you attempt to generate past the
+#  dictionary limit.
+boards:
   board_0:
+    id: -1
     rows: 2
     cols: 2
-    ids: [0, 1, 2, 3]
-
+    marker_ids: []
   board_1:
+    id: -1
     rows: 2
     cols: 2
-    ids: [4, 5, 6, 7]
-
+    marker_ids: []
   board_2:
+    id: -1
     rows: 2
     cols: 2
-    ids: [8, 9, 10, 11]
-
+    marker_ids: []
   board_3:
+    id: -1
     rows: 2
     cols: 2
-    ids: [12, 13, 14, 15]
+    marker_ids: []
 
-  board_4:
-    rows: 2
-    cols: 2
-    ids: [16, 17, 18, 19]
-
-  board_5:
-    rows: 2
-    cols: 2
-    ids: [20, 21, 22, 23]
-
-  board_6:
-    rows: 2
-    cols: 2
-    ids: [24, 25, 26, 27]
-
-  board_7:
-    rows: 2
-    cols: 2
-    ids: [28, 29, 30, 31]
