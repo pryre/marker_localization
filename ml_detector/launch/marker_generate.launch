@@ -2,6 +2,6 @@
 	<node pkg="ml_detector" type="ml_generate_boards" name="ml_generate_boards" clear_params="true" output="screen">
 		<param name="output_directory" value="/tmp/" type="str"/>
 
-		<rosparam command="load" file="$(find marker_localization)/launch/board_config.yaml"/>
+		<rosparam command="load" file="$(find ml_detector)/launch/board_config.yaml"/>
 	</node>
 </launch>

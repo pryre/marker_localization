@@ -15,7 +15,7 @@
 		<param name="camera_is_rectified" value="false" type="boolean"/>
 
 		<!-- Detection Parameters /-->
-		<rosparam command="load" file="$(find marker_localization)/launch/detect_config.yaml"/>
-		<rosparam command="load" file="$(find marker_localization)/launch/board_config.yaml"/>
+		<rosparam command="load" file="$(find ml_detector)/launch/detect_config.yaml"/>
+		<rosparam command="load" file="$(find ml_detector)/launch/board_config.yaml"/>
 	</node>
 </launch>

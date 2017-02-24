@@ -438,8 +438,8 @@ class MarkerDetector {
 };
 
 int main(int argc, char** argv) {
-	ros::init(argc, argv, "marker_mapper");
-	MarkerDetector ic;
+	ros::init(argc, argv, "ml_detector");
+	MarkerDetector md;
 
 	ros::spin();
 

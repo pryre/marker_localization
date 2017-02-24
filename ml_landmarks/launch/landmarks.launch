@@ -1,0 +1,22 @@
+<launch>
+	<node pkg="ml_landmarks" type="ml_landmarks_node" name="ml_landmarks" clear_params="true" output="screen">
+		<!-- Operation Parameters -->
+		<param name="marker_topic" value="/ml_detector/markers" type="str"/>
+
+		<!-- Low Pass Filter -->
+		<param name="apply_lpf" value="true" type="boolean"/>
+		<param name="lpf_beta" value="0.025" type="double"/>
+
+		<!-- First Landmark Location [X,Y,Z] -->
+		<rosparam param="first_lm_pos">[0.0, 0.0, 0.0]</rosparam>
+		<!-- Might be good to define the marker to use as the first ID -->
+
+		<!-- Accuracy Filter -->
+		<param name="min_confidence" value="0.5" type="double"/>
+		<!-- Might be useful to flatten markers to a plane if they are close... -->
+
+		<!-- Marker Visualization -->
+		<!-- Could output RViz Markers in this node... -->
+
+	</node>
+</launch>

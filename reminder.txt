@@ -2,7 +2,7 @@
 Packages to provide detection, localization, and mapping in the ROS environment by utilizing OpenCV/ARUCO.
 
 #== Nodes ==#
-Pose Detector:
+ml_detector:
 	- Use the in-built libraries to identify markers
 	- Loads marker config from yaml file
 	- Use yaml to switch between single and board (board is an array)
@@ -18,8 +18,7 @@ Pose Detector:
 		- id_confidence lists which singles could be seen in the marker (0 or 1)
 		- pose is from marker center
 
-Mapper:
-	- Loads the same yaml as Pose Detector to know how many to expect (and to match single ids to "board id")
+ml_landmarks:
 	- How mapping works:
 		- Notes down first marker pose as the 0,0 point
 		- Matches multiple markers with the same stamp as being linked
