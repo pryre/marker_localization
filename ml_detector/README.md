@@ -1,5 +1,5 @@
-# marker_localization
-A collection of tools to perform localization in an unknown environment with defined markers
+# ml_detector
+This node will detect and output pose estimates for defined ARUCO markers/boards
 
 # Programs:
 - marker_create: Runs a small app that dumps the selected dictionary in the current directory
