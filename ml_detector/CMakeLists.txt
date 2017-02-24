@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(marker_localization)
+project(ml_detector)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -135,24 +135,24 @@ include_directories(
 # add_dependencies(marker_mapper ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(marker_detector_node src/marker_detector_node.cpp)
-add_executable(marker_dump_dictionary src/marker_dump_dictionary.cpp)
-add_executable(marker_generate_boards src/marker_generate_boards.cpp)
+add_executable(ml_detector_node src/ml_detector_node.cpp)
+add_executable(ml_dump_dictionary src/ml_dump_dictionary.cpp)
+add_executable(ml_generate_boards src/ml_generate_boards.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(marker_mapper_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(marker_detector_node
+target_link_libraries(ml_detector_node
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(marker_dump_dictionary
+target_link_libraries(ml_dump_dictionary
   ${catkin_LIBRARIES}
 )
 
-target_link_libraries(marker_generate_boards
+target_link_libraries(ml_generate_boards
   ${catkin_LIBRARIES}
 )
 

@@ -1,5 +1,5 @@
 <launch>
-	<node pkg="marker_localization" type="marker_detector_node" name="marker_detector" clear_params="true" output="screen">
+	<node pkg="ml_detector" type="ml_detector_node" name="ml_detector" clear_params="true" output="screen">
 		<!-- Operation Parameters -->
 		<param name="send_debug" value="true" type="boolean"/>
 		<param name="show_rejected" value="false" type="boolean"/>

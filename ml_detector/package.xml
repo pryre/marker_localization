@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package>
-  <name>marker_localization</name>
+  <name>ml_detector</name>
   <version>0.0.0</version>
-  <description>The marker_localization package</description>
+  <description>A ARUCO marker detector that integrates with the marker_localization package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
