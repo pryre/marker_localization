@@ -3,7 +3,8 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-#include <marker_msgs/MarkerStamped.h>
+#include <ml_msgs/Marker.h>
+#include <ml_msgs/MarkerDetection.h>
 #include <geometry_msgs/Pose.h>
 #include <tf/tf.h>
 
@@ -21,6 +22,38 @@ typedef enum {
 	BC_ROWS,
 	BC_COLS
 } board_config_names;
+
+void loadParam(ros::NodeHandle &n, const std::string &str, bool &param) {
+	if( !n.getParam( str, param ) ) {
+		ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param ? "true" : "false" );
+	} else {
+		ROS_INFO( "Loaded %s: %s", str.c_str(), param ? "true" : "false" );
+	}
+}
+
+void loadParam(ros::NodeHandle &n, const std::string &str, int &param) {
+	if( !n.getParam( str, param ) ) {
+		ROS_WARN( "No parameter set for \"%s\", using: %i", str.c_str(), param );
+	} else {
+		ROS_INFO( "Loaded %s: %i", str.c_str(), param );
+	}
+}
+
+void loadParam(ros::NodeHandle &n, const std::string &str, double &param) {
+	if( !n.getParam( str, param ) ) {
+		ROS_WARN( "No parameter set for \"%s\", using: %f", str.c_str(), param );
+	} else {
+		ROS_INFO( "Loaded %s: %f", str.c_str(), param );
+	}
+}
+
+void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
+	if( !n.getParam( str, param ) ) {
+		ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param.c_str() );
+	} else {
+		ROS_INFO( "Loaded %s: %s", str.c_str(), param.c_str() );
+	}
+}
 
 class MarkerDetector {
 	private:
@@ -99,7 +132,7 @@ class MarkerDetector {
 			}
 
 			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );
-			marker_pub_ = nh_.advertise<marker_msgs::MarkerStamped> (marker_topic, 100);
+			marker_pub_ = nh_.advertise<ml_msgs::MarkerDectection> (marker_topic, 100);
 
 			ROS_INFO("Waiting for camera info...");
 
@@ -174,38 +207,6 @@ class MarkerDetector {
 			tf::Vector3 tf_orig(Tvec.at<double>(0,0), Tvec.at<double>(1,0), Tvec.at<double>(2,0));
 
 			return tf::Transform(tf_rot, tf_orig);
-		}
-
-		void loadParam(ros::NodeHandle &n, const std::string &str, bool &param) {
-			if( !n.getParam( str, param ) ) {
-				ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param ? "true" : "false" );
-			} else {
-				ROS_INFO( "Loaded %s: %s", str.c_str(), param ? "true" : "false" );
-			}
-		}
-
-		void loadParam(ros::NodeHandle &n, const std::string &str, int &param) {
-			if( !n.getParam( str, param ) ) {
-				ROS_WARN( "No parameter set for \"%s\", using: %i", str.c_str(), param );
-			} else {
-				ROS_INFO( "Loaded %s: %i", str.c_str(), param );
-			}
-		}
-
-		void loadParam(ros::NodeHandle &n, const std::string &str, double &param) {
-			if( !n.getParam( str, param ) ) {
-				ROS_WARN( "No parameter set for \"%s\", using: %f", str.c_str(), param );
-			} else {
-				ROS_INFO( "Loaded %s: %f", str.c_str(), param );
-			}
-		}
-
-		void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
-			if( !n.getParam( str, param ) ) {
-				ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param.c_str() );
-			} else {
-				ROS_INFO( "Loaded %s: %s", str.c_str(), param.c_str() );
-			}
 		}
 
 		bool readBoardConfig(ros::NodeHandle &n) {
@@ -345,6 +346,8 @@ class MarkerDetector {
 			cv::aruco::detectMarkers(cv_ptr->image, dictionary, corners, ids, detectorParams, rejected);
 
 			if(ids.size() > 0) {	//If markers were found
+				ml_msgs::MarkerDectection md_out;	//Detected markers message
+
 				for(int i = 0; i < board_list.size(); i++) {	//Iterate through the known boards for matches
 					int markersOfBoardDetected = 0;
 					cv::Vec3d rvec;
@@ -401,17 +404,17 @@ class MarkerDetector {
 					}
 
 					if(markersOfBoardDetected > 0) {
-						//Transmit the transformations
-						marker_msgs::MarkerStamped marker_out;
-						marker_out.header.stamp = msg->header.stamp;
-						marker_out.header.frame_id = msg->header.frame_id;
-						marker_out.header.seq = ++marker_seq;
+						//Add the current marker to the detection message
+						ml_msgs::Marker marker_out;
 
-						marker_out.marker.ids.push_back(board_configs.at(i).at(BC_ID));	//The id of the board found, as this is the only way to do so (and to process the list of markers found is not really worth the gain)
-						marker_out.marker.ids_confidence.push_back( ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ) );	//Return the ratio of markers found for this board
-						poseTFToMsg(getTF(cv::Mat(rvec), cv::Mat(tvec)), marker_out.marker.pose);
+						//TODO: Should see if we can include tag data here
+						marker_out.id = board_configs.at(i).at(BC_ID);	//The id of the board found
+						marker_out.rows = board_configs.at(i).at(BC_ROWS);	//The number of rows of tags of the board found
+						marker_out.cols = board_configs.at(i).at(BC_COLS);	//The number of cols of tags of the board found
+						marker_out.marker.marker_confidence.push_back( ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ) );	//Return the ratio of markers found for this board
+						poseTFToMsg( getTF( cv::Mat(rvec), cv::Mat(tvec) ), marker_out.pose );
 
-						marker_pub_.publish(marker_out);
+						md_out.push_back(marker_out);
 
 						//==-- draw results
 						if(send_debug && (debug_image_pub_.getNumSubscribers() > 0) ) {
@@ -420,6 +423,13 @@ class MarkerDetector {
 						}
 					}
 				}
+
+				//Transmit the detection message
+				md_out.header.stamp = msg->header.stamp;
+				md_out.header.frame_id = msg->header.frame_id;
+				md_out.header.seq = ++marker_seq;
+
+				marker_pub_.publish(md_out);
 			}
 
 			//Only send the debug image once

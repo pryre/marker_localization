@@ -1,22 +1,31 @@
 <launch>
 	<node pkg="ml_landmarks" type="ml_landmarks_node" name="ml_landmarks" clear_params="true" output="screen">
 		<!-- Operation Parameters -->
-		<param name="marker_topic" value="/ml_detector/markers" type="str"/>
+		<param name="topic_marker_detected" value="/ml_detector/detected_markers" type="str"/>
 
-		<!-- Low Pass Filter -->
-		<param name="apply_lpf" value="true" type="boolean"/>
-		<param name="lpf_beta" value="0.025" type="double"/>
+		<!-- Camera Pose Estimation -->
+		<param name="topic_pose_estimate" value="camera_pose" type="str"/>
 
+		<!-- Landmark To Map -->
+		<param name="map_frame" value="map" type="str"/>
+		<!-- First Landmark ID (Comment this to accept first found) -->
+		<param name="lm_static_ref_id" value="0" type="int"/>
 		<!-- First Landmark Location [X,Y,Z] -->
-		<rosparam param="first_lm_pos">[0.0, 0.0, 0.0]</rosparam>
-		<!-- Might be good to define the marker to use as the first ID -->
+		<rosparam param="lm_static_ref_pos">[0.0, 0.0, 0.0]</rosparam>
 
-		<!-- Accuracy Filter -->
+		<!-- Accuracy Filtering -->
 		<param name="min_confidence" value="0.5" type="double"/>
-		<!-- Might be useful to flatten markers to a plane if they are close... -->
+		<param name="snap_quat_apply" value="true" type="boolean"/>
+		<!-- Plane to align markers [X,Y,Z] -->
+		<rosparam param="snap_quat_plane">[0.0, 0.0, 1.0]</rosparam>
+		<param name="lpf_pos_apply" value="true" type="boolean"/>
+		<param name="lpf_pos_beta" value="0.025" type="double"/>
 
 		<!-- Marker Visualization -->
-		<!-- Could output RViz Markers in this node... -->
+		<param name="show_viz" value="true" type="boolean"/>
+		<param name="topic_viz_output" value="marker_vizualization" type="str"/>
+		<rosparam param="viz_size">[0.2, 0.2, 0.05]</rosparam>
 
+		<!-- Could output RViz Markers in this node... -->
 	</node>
 </launch>
