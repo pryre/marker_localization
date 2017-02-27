@@ -1,6 +1,6 @@
 # This expresses a marker in a 3D space
 int32 marker_id           # id of the marker detected
-double marker_confidence  # confidence that this marker is identified correctly
+float64 marker_confidence  # confidence that this marker is identified correctly
 
 int32 rows                # number of rows of tags in this marker
 int32 cols                # number of cols of tags in this marker

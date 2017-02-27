@@ -132,7 +132,7 @@ class MarkerDetector {
 			}
 
 			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );
-			marker_pub_ = nh_.advertise<ml_msgs::MarkerDectection> (marker_topic, 100);
+			marker_pub_ = nh_.advertise<ml_msgs::MarkerDetection> (marker_topic, 100);
 
 			ROS_INFO("Waiting for camera info...");
 
@@ -346,7 +346,7 @@ class MarkerDetector {
 			cv::aruco::detectMarkers(cv_ptr->image, dictionary, corners, ids, detectorParams, rejected);
 
 			if(ids.size() > 0) {	//If markers were found
-				ml_msgs::MarkerDectection md_out;	//Detected markers message
+				ml_msgs::MarkerDetection md_out;	//Detected markers message
 
 				for(int i = 0; i < board_list.size(); i++) {	//Iterate through the known boards for matches
 					int markersOfBoardDetected = 0;
@@ -408,13 +408,13 @@ class MarkerDetector {
 						ml_msgs::Marker marker_out;
 
 						//TODO: Should see if we can include tag data here
-						marker_out.id = board_configs.at(i).at(BC_ID);	//The id of the board found
+						marker_out.marker_id = board_configs.at(i).at(BC_ID);	//The id of the board found
 						marker_out.rows = board_configs.at(i).at(BC_ROWS);	//The number of rows of tags of the board found
 						marker_out.cols = board_configs.at(i).at(BC_COLS);	//The number of cols of tags of the board found
-						marker_out.marker.marker_confidence.push_back( ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ) );	//Return the ratio of markers found for this board
+						marker_out.marker_confidence = ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) );	//Return the ratio of markers found for this board
 						poseTFToMsg( getTF( cv::Mat(rvec), cv::Mat(tvec) ), marker_out.pose );
 
-						md_out.push_back(marker_out);
+						md_out.markers.push_back(marker_out);
 
 						//==-- draw results
 						if(send_debug && (debug_image_pub_.getNumSubscribers() > 0) ) {

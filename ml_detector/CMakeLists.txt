@@ -10,7 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   sensor_msgs
-  marker_msgs
+  ml_msgs
   geometry_msgs
   tf
 )

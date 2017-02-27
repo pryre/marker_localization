@@ -7,7 +7,7 @@ project(ml_landmarks)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
-  marker_msgs
+  ml_msgs
   geometry_msgs
   tf
 )
@@ -72,7 +72,7 @@ add_definitions(-std=c++11)
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   std_msgs
+#   ml_msgs
 # )
 
 ################################################
@@ -106,7 +106,7 @@ add_definitions(-std=c++11)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES marker_mapper
+#  LIBRARIES ml_landmarks
 #  CATKIN_DEPENDS cv_bridge image_transport roscpp std_msgs
 #  DEPENDS system_lib
 )
@@ -123,23 +123,24 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(marker_mapper
-#   src/${PROJECT_NAME}/marker_mapper.cpp
+# add_library(ml_landmarks
+#   src/${PROJECT_NAME}/ml_landmarks.cpp
 # )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(marker_mapper ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(ml_landmarks ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 add_executable(ml_landmarks_node src/ml_landmarks_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(marker_mapper_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(ml_landmarks_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
+
 target_link_libraries(ml_landmarks_node
   ${catkin_LIBRARIES}
 )
@@ -159,7 +160,7 @@ target_link_libraries(ml_landmarks_node
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS marker_mapper marker_mapper_node
+# install(TARGETS ml_landmarks ml_landmarks_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -184,7 +185,7 @@ target_link_libraries(ml_landmarks_node
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_marker_mapper.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_ml_landmarks.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

@@ -1,6 +1,6 @@
 #include <ros/ros.h>
 
-#include <ml_msgs/MarkerDectection.h>
+#include <ml_msgs/MarkerDetection.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <tf/tf.h>
@@ -44,16 +44,16 @@ void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
 }
 
 void loadParam(ros::NodeHandle &n, const std::string &str, tf::Vector3 &param) {
-	std::vector temp_vec;
+	std::vector< double > temp_vec;
 
 	if( !n.getParam( str, temp_vec ) ) {
 		ROS_WARN( "No parameter set for \"%s\", using: [%f, %f, %f]", str.c_str(), temp_vec.at(0), temp_vec.at(1), temp_vec.at(2) );
 	} else {
 		ROS_INFO( "Loaded %s: [%f, %f, %f]", str.c_str(), temp_vec.at(0), temp_vec.at(1), temp_vec.at(2) );
 	}
-	param.x = temp_vec.at(0);
-	param.y = temp_vec.at(1);
-	param.z = temp_vec.at(2);
+	param.setX( temp_vec.at(0) );
+	param.setY( temp_vec.at(1) );
+	param.setZ( temp_vec.at(2) );
 }
 
 class MarkerLandmarks {
@@ -62,7 +62,7 @@ class MarkerLandmarks {
 		ros::Subscriber marker_sub_;
 		ros::Publisher pose_pub_;
 
-		std:string map_frame;
+		std::string map_frame;
 		int lm_static_ref_id;
 		tf::Vector3 lm_static_ref_pos;
 
@@ -76,7 +76,7 @@ class MarkerLandmarks {
 		std::vector< std::vector< int > > landmarks_list;
 
 	public:
-		MarkerLandmarks() : nh_(ros::this_node::getName()), last_stamp(0) {
+		MarkerLandmarks() : nh_(ros::this_node::getName()) {
 			std::string topic_marker_detected = "marker_detection";
 			std::string topic_pose_estimate = "camera_pose";
 			map_frame = "map";
@@ -99,8 +99,8 @@ class MarkerLandmarks {
 
 			//TODO: Marker Vizualization stuff
 
-			marker_sub_ = nh_.subscribe<ml_msgs::MarkerDectection> ( topic_marker_detected, 100, &MarkerLandmarks::marker_cb, this );
-			marker_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ( topic_pose_estimate, 100 );
+			marker_sub_ = nh_.subscribe<ml_msgs::MarkerDetection> ( topic_marker_detected, 100, &MarkerLandmarks::marker_cb, this );
+			pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ( topic_pose_estimate, 100 );
 
 			ROS_INFO("Listening for new markers...");
 		}
@@ -110,7 +110,7 @@ class MarkerLandmarks {
 
 		void marker_cb(const ml_msgs::MarkerDetection::ConstPtr& msg) {
 			std::vector< int > found_landmarks;			//List of indexes for msg.markers[] that represent the new landmarks to be added to the TF
-			std::vector< int > found_reference_points;	//List of indexes for msg.markers[] that represent known reference points
+			std::vector< int > found_reference_points;	//List of indexes for known_landmarks that represent known reference points
 
 			//TODO: CHECK FOR CONFIDENCE OF EACH MARKER AND COMPARE TO MIN IN THIS LOOP
 			for(int i = 0; i < msg->markers.size(); i++) {	//Sort through the list of detected markers
@@ -118,7 +118,7 @@ class MarkerLandmarks {
 				std::vector<int>::iterator it = std::find( known_landmarks.begin(), known_landmarks.end(), msg->markers.at(i).marker_id );
 
 				//If we know it
-				if( it != ids.end() ) {	//A match was found in the image for id of the board
+				if( it != known_landmarks.end() ) {	//A match was found in the image for id of the board
 					int ind = std::distance( known_landmarks.begin(), it);	//Get the index of the itterator
 
 					//Add it to the list of references
@@ -131,27 +131,27 @@ class MarkerLandmarks {
 						//Set the known lists to reflect it
 						known_landmarks.push_back(lm_static_ref_id);
 
-						std::vector< int > temp_list;
+						std::vector< int > temp_list;	//This creates a list of 1, as it is the first node in the branch
 						temp_list.push_back(lm_static_ref_id);
-						landmarks_list = temp_list;
+						landmarks_list.push_back(temp_list);
 
 						//Add it to the list of references
-						found_reference_points.push_back(ind);
+						found_reference_points.push_back(known_landmarks.size() - 1);
 
 						//TODO: Send off a once-off transform to define the start point
 						//tfbr_.broadcast(map->ml/lm_static_ref_id);
 				} else {
 					//Add the new landmarks to the shortlist
-					found_landmarks.push_back(ind);
+					found_landmarks.push_back(i);
 				}
 			}
 
 			//If at least 1 known reference was found
 			if( found_reference_points.size() > 0 ) {
 				//Check the landmark list at each reference to find the closest branch to the starting reference (TODO: This could be simplified if known_landmarks(i) represents the same marker as landmarks_list(i))
-				ind_ref = numeric_limits< int >::max();
+				int ind_ref = std::numeric_limits< int >::max();
 
-				for(int j = 0; j < found_reference_points.size(), j++) {
+				for(int j = 0; j < found_reference_points.size(); j++) {
 					if( landmarks_list.at(j).size() < ind_ref)
 						ind_ref = j;
 				}
@@ -162,6 +162,8 @@ class MarkerLandmarks {
 
 				//For all the already known markers
 				for(int k = 0; k < found_reference_points.size(); k++) {
+					std::vector<int>::iterator it = std::find( known_landmarks.begin(), known_landmarks.end(), msg->markers.at(found_reference_points.at(k)).marker_id );
+
 					//For all execpt the best reference point
 					if(found_reference_points.at(k) != ind_ref) {
 						bool update_transform = false;
@@ -174,7 +176,7 @@ class MarkerLandmarks {
 							//Relate the marker to the new closest branch
 							//TODO:
 							update_transform = true;
-						} else if ( (branch_found.at(branch_found.end() - 1) == ind_ref) && lpf_pos_apply) {	//Else if ind_ref is the current markers parent
+						} else if ( (branch_found.at(branch_found.size() - 2) == ind_ref) && lpf_pos_apply) {	//Else if ind_ref is the current markers parent
 							//TODO: Filter the position
 
 							update_transform = true;
