@@ -15,9 +15,9 @@
 
 		<!-- Accuracy Filtering -->
 		<param name="min_confidence" value="0.5" type="double"/>
-		<param name="snap_quat_apply" value="true" type="boolean"/>
-		<!-- Plane to align markers [X,Y,Z] -->
-		<rosparam param="snap_quat_plane">[0.0, 0.0, 1.0]</rosparam>
+		<param name="snap_plane_apply" value="true" type="boolean"/>
+		<!-- Plane to align markers [W,X,Y,Z] - plane is perpendicular to quaternion-->
+		<rosparam param="snap_quat_plane">[0.0, 0.0, 0.0, 1.0]</rosparam>
 		<param name="lpf_pos_apply" value="true" type="boolean"/>
 		<param name="lpf_pos_beta" value="0.025" type="double"/>
 
