@@ -6,7 +6,7 @@
 		<param name="refine_strategy" value="true" type="boolean"/>
 
 		<!-- Marker Parameters -->
-		<param name="marker_topic" value="markers" type="str"/>
+		<param name="marker_topic" value="/ml_landmarks/detected_markers" type="str"/>
 
 		<!-- Image Parameters -->
 		<param name="debug_image_topic" value="image_debug" type="str"/>

@@ -1,7 +1,7 @@
 <launch>
 	<node pkg="ml_landmarks" type="ml_landmarks_node" name="ml_landmarks" clear_params="true" output="screen">
 		<!-- Operation Parameters -->
-		<param name="topic_marker_detected" value="/ml_detector/detected_markers" type="str"/>
+		<param name="topic_marker_detected" value="detected_markers" type="str"/>
 
 		<!-- Camera Pose Estimation -->
 		<param name="topic_pose_estimate" value="camera_pose" type="str"/>
