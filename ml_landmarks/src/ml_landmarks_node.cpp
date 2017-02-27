@@ -3,6 +3,8 @@
 #include <ml_msgs/MarkerDetection.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Transform.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/transform_listener.h>
@@ -61,6 +63,52 @@ void loadParam(ros::NodeHandle &n, const std::string &str, tf2::Vector3 &param) 
 	param.setZ( temp_vec.at(2) );
 }
 
+void loadParam(ros::NodeHandle &n, const std::string &str, geometry_msgs::Transform &param) {
+	std::vector< double > temp_vec = {0,0,0,1,0,0,0};
+
+	if( !n.getParam( str, temp_vec ) ) {
+		ROS_WARN( "No parameter set for \"%s\", using: [%f, %f, %f], [%f, %f, %f, %f]", str.c_str(), temp_vec.at(0), temp_vec.at(1), temp_vec.at(2), temp_vec.at(3), temp_vec.at(4), temp_vec.at(5), temp_vec.at(6) );
+	} else {
+		ROS_INFO( "Loaded %s: [%f, %f, %f], [%f, %f, %f, %f]", str.c_str(), temp_vec.at(0), temp_vec.at(1), temp_vec.at(2), temp_vec.at(3), temp_vec.at(4), temp_vec.at(5), temp_vec.at(6) );
+	}
+
+	param.translation.x = temp_vec.at(0);
+	param.translation.y = temp_vec.at(1);
+	param.translation.z = temp_vec.at(2);
+	param.rotation.w = temp_vec.at(3);
+	param.rotation.x = temp_vec.at(4);
+	param.rotation.y = temp_vec.at(5);
+	param.rotation.z = temp_vec.at(6);
+}
+
+void poseToTransform( const geometry_msgs::Pose &p, geometry_msgs::Transform &t ) {
+	t.translation.x = p.position.x;
+	t.translation.y = p.position.y;
+	t.translation.z = p.position.z;
+	t.rotation.w = p.orientation.w;
+	t.rotation.x = p.orientation.x;
+	t.rotation.y = p.orientation.y;
+	t.rotation.z = p.orientation.z;
+}
+
+void geometryToTF2( const geometry_msgs::Transform &t, tf2::Transform &t2 ) {
+	tf2::Vector3 vec(t.translation.x, t.translation.y, t.translation.z);
+	tf2::Quaternion quat(t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w);
+
+	t2.setOrigin(vec);
+	t2.setRotation(quat);
+}
+
+void TF2ToGeometry( const tf2::Transform &t2, geometry_msgs::Transform &t ) {
+	t.translation.x = t2.getOrigin().x();
+	t.translation.y = t2.getOrigin().y();
+	t.translation.z = t2.getOrigin().z();
+	t.rotation.w = t2.getRotation().w();
+	t.rotation.x = t2.getRotation().x();
+	t.rotation.y = t2.getRotation().y();
+	t.rotation.z = t2.getRotation().z();
+}
+
 class MarkerLandmarks {
 	private:
 		ros::NodeHandle nh_;
@@ -69,7 +117,7 @@ class MarkerLandmarks {
 
 		std::string map_frame;
 		int lm_static_ref_id;
-		tf2::Vector3 lm_static_ref_pos;
+		geometry_msgs::Transform lm_static_ref_pos;
 
 		double min_confidence;
 		bool snap_quat_apply;
@@ -81,8 +129,13 @@ class MarkerLandmarks {
 		std::vector< int > known_landmarks;
 		std::vector< std::vector< int > > landmarks_list;
 
+		tf2_ros::Buffer tfBuffer;
+		tf2_ros::TransformListener tfln_;
+		tf2_ros::TransformBroadcaster tfbr_;
+		tf2_ros::StaticTransformBroadcaster tfbrs_;
+
 	public:
-		MarkerLandmarks() : nh_(ros::this_node::getName()) {
+		MarkerLandmarks() : nh_(ros::this_node::getName()), tfln_(tfBuffer) {
 			std::string topic_marker_detected = "marker_detection";
 			std::string topic_pose_estimate = "camera_pose";
 			map_frame = "map";
@@ -94,7 +147,7 @@ class MarkerLandmarks {
 
 			loadParam(nh_, "map_frame", map_frame);
 			loadParam(nh_, "lm_static_ref_id", lm_static_ref_id);
-			loadParam(nh_, "lm_static_ref_pos", lm_static_ref_pos);
+			loadParam(nh_, "lm_static_ref_pose", lm_static_ref_pos);
 
 			if( lm_static_ref_id >= 0 ) {
 				//Set the known lists to reflect it
@@ -104,8 +157,14 @@ class MarkerLandmarks {
 				temp_list.push_back(lm_static_ref_id);
 				landmarks_list.push_back(temp_list);
 
+				geometry_msgs::TransformStamped tf_static_ref;
+				tf_static_ref.header.stamp = ros::Time::now();
+				tf_static_ref.header.frame_id = map_frame;
+				tf_static_ref.child_frame_id = "ml/id_" + std::to_string(lm_static_ref_id);
+				tf_static_ref.transform = lm_static_ref_pos;
+
 				//TODO: Send off a once-off transform to define the start point
-				//tfbr_.broadcast(map->ml/lm_static_ref_id);
+				tfbrs_.sendTransform(tf_static_ref);
 			}
 
 			loadParam(nh_, "min_confidence", min_confidence);
@@ -129,7 +188,8 @@ class MarkerLandmarks {
 
 		void marker_cb(const ml_msgs::MarkerDetection::ConstPtr& msg) {
 			std::vector< int > found_landmarks;			//List of indexes for msg.markers[] that represent the new landmarks to be added to the TF
-			std::vector< int > found_reference_points;	//List of indexes for known_landmarks that represent known reference points
+			std::vector< int > found_reference_points;	//List of indexes for msg.markers[] that represent known reference points
+			std::vector< int > marker_reference_points;	//List of indexes for known_landmarks that represent known reference points
 
 			//TODO: CHECK FOR CONFIDENCE OF EACH MARKER AND COMPARE TO MIN IN THIS LOOP
 			for(int i = 0; i < msg->markers.size(); i++) {	//Sort through the list of detected markers
@@ -141,7 +201,8 @@ class MarkerLandmarks {
 					int ind = std::distance( known_landmarks.begin(), it);	//Get the index of the itterator
 
 					//Add it to the list of references
-					found_reference_points.push_back(ind);
+					marker_reference_points.push_back(ind);
+					found_reference_points.push_back(i);
 
 				} else if( lm_static_ref_id < 0 )  {	//Take the first marker found to be the static ref
 						lm_static_ref_id = msg->markers.at(i).marker_id;	//Set the id as known if to cover the "any marker first" case
@@ -156,24 +217,32 @@ class MarkerLandmarks {
 						landmarks_list.push_back(temp_list);
 
 						//Add it to the list of references
-						found_reference_points.push_back(known_landmarks.size() - 1);
+						marker_reference_points.push_back(known_landmarks.size() - 1);
+						found_reference_points.push_back(i);
 
-						//TODO: Send off a once-off transform to define the start point
-						//tfbr_.broadcast(map->ml/lm_static_ref_id);
+						//Send off a once-off transform to define the start point
+						geometry_msgs::TransformStamped tf;
+						tf.header.stamp = msg->header.stamp;
+						tf.header.frame_id = map_frame;
+						tf.child_frame_id = "ml/id_" + std::to_string(lm_static_ref_id);
+						tf.transform = lm_static_ref_pos;
+						tfbrs_.sendTransform(tf);
 				} else {
 					//Add the new landmarks to the shortlist
 					found_landmarks.push_back(i);
 				}
 			}
 			//If at least 1 known reference was found
-			if( found_reference_points.size() > 0 ) {
+			if( marker_reference_points.size() > 0 ) {
 				//Check the landmark list at each reference to find the closest branch to the starting reference (TODO: This could be simplified if known_landmarks(i) represents the same marker as landmarks_list(i))
-				int ind_ref = found_reference_points.at(0);
+				int ind_ref = marker_reference_points.at(0);
+				int marker_ref = found_reference_points.at(0);
 
 				//Go through the list and find the index that has the smallest branch list
-				for(int j = 1; j < found_reference_points.size(); j++) { //Start by comparing ind 1 to ind 0
-					if( landmarks_list.at(found_reference_points.at(j)).size() < landmarks_list.at(ind_ref).size())
-						ind_ref = found_reference_points.at(j);
+				for(int j = 1; j < marker_reference_points.size(); j++) { //Start by comparing ind 1 to ind 0
+					if( landmarks_list.at(marker_reference_points.at(j)).size() < landmarks_list.at(ind_ref).size())
+						ind_ref = marker_reference_points.at(j);
+						marker_ref = found_reference_points.at(j);
 				}
 
 				//ROS_INFO_THROTTLE(0.2, "Chosen reference id: %i", known_landmarks.at(ind_ref));
@@ -182,25 +251,34 @@ class MarkerLandmarks {
 				//	Loop through all the detected markers and push the temporary tramsforms in camera frame to TF
 				//	Except for the ind_ref marker, which should align the camera in the ind_ref frame
 
-				//TODO: broadcast here the transform from ind_ref -> cam
+				//Send off a once-off transform to define the start point
+				geometry_msgs::TransformStamped tf_ref;
+				tf2::Transform tf2_ref;
+				tf_ref.header.stamp = msg->header.stamp;
+				tf_ref.header.frame_id = "ml/id_" + std::to_string(msg->markers.at(marker_ref).marker_id);
+				tf_ref.child_frame_id = "ml/" + msg->header.frame_id;
+				poseToTransform(msg->markers.at(marker_ref).pose, tf_ref.transform);
+				geometryToTF2(tf_ref.transform, tf2_ref);
+				TF2ToGeometry(tf2_ref.inverse(), tf_ref.transform);
+				tfbr_.sendTransform(tf_ref);
 
 				//For all the already known markers
-				for(int k = 0; k < found_reference_points.size(); k++) {
+				for(int k = 0; k < marker_reference_points.size(); k++) {
 					//For all execpt the best reference point
-					if(found_reference_points.at(k) != ind_ref) {
+					if(marker_reference_points.at(k) != ind_ref) {
 						bool update_transform = false;
 						tf2::Transform lm_tf;
 
-						std::vector< int > found_branch = landmarks_list.at(found_reference_points.at(k));	//The refernce branch of the current marker
+						std::vector< int > found_branch = landmarks_list.at(marker_reference_points.at(k));	//The refernce branch of the current marker
 
 						//If this reference point is a closer branch
 						if( landmarks_list.at(ind_ref).size() < ( found_branch.size() - 1 ) ) {
 							//Relate the marker to the new closest branch
-							int id_new = known_landmarks.at(found_reference_points.at(k));
+							int id_new = known_landmarks.at(marker_reference_points.at(k));
 							std::vector< int > temp_list;
 							temp_list = landmarks_list.at(ind_ref);	//Get the branch for the index reference
 							temp_list.push_back(id_new);	//Append the new id
-							landmarks_list.at(found_reference_points.at(k)) = temp_list;	//Add this to the known lists
+							landmarks_list.at(marker_reference_points.at(k)) = temp_list;	//Add this to the known lists
 
 							std::string temp_str = "Found shorter branch for id " + std::to_string(id_new) + ": [";
 							for(int c = 0; c < temp_list.size(); c++) {
@@ -262,8 +340,29 @@ class MarkerLandmarks {
 						//TODO: Align to axis
 					}
 
-					//TODO: Broadcast the new transform for this marker
 
+					geometry_msgs::TransformStamped tf_temp;
+					tf_temp.header.stamp = msg->header.stamp;
+					tf_temp.header.frame_id = "ml/" + msg->header.frame_id;
+					tf_temp.child_frame_id = "ml/id_" + std::to_string(id_new);
+					poseToTransform(msg->markers.at(found_landmarks.at(f)).pose, tf_temp.transform);
+					//tfbr_.sendTransform(tf_ref);
+					tfBuffer.setTransform(tf_temp, "ml_temp_transform");
+
+
+
+					//Broadcast the new transform for this marker
+
+
+					try {
+						geometry_msgs::TransformStamped tf_new;
+						tf_new = tfBuffer.lookupTransform( "ml/id_" + std::to_string(msg->markers.at(marker_ref).marker_id), "ml/id_" + std::to_string(id_new), msg->header.stamp, ros::Duration(0.1) );
+						tfbrs_.sendTransform(tf_new);
+					} catch (tf2::TransformException &ex) {
+						ROS_WARN("%s",ex.what());
+						ros::Duration(1.0).sleep();
+						continue;
+					}
 					//If param set to do marker viz
 						//TODO: Publish marker viz
 				}

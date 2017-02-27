@@ -9,9 +9,9 @@
 		<!-- Landmark To Map -->
 		<param name="map_frame" value="map" type="str"/>
 		<!-- First Landmark ID (Comment this to accept first found) -->
-		<param name="lm_static_ref_id" value="0" type="int"/>
-		<!-- First Landmark Location [X,Y,Z] -->
-		<rosparam param="lm_static_ref_pos">[0.0, 0.0, 0.0]</rosparam>
+		<!-- param name="lm_static_ref_id" value="0" type="int"/-->
+		<!-- First Landmark Location [X,Y,Z, w, x, y, z] -->
+		<rosparam param="lm_static_ref_pose">[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]</rosparam>
 
 		<!-- Accuracy Filtering -->
 		<param name="min_confidence" value="0.5" type="double"/>

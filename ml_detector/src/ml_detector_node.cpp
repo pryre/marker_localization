@@ -180,7 +180,7 @@ class MarkerDetector {
 			cv::Rodrigues(Rvec, rot);
 
 			cv::Mat rotate_to_sys(3, 3, CV_64FC1);
-
+			/*
 			// Fixed the rotation to meet the ROS system
 			// Doing a basic rotation around X with theta=PI
 			// By Sahloul
@@ -189,17 +189,17 @@ class MarkerDetector {
 			//	1	0	0
 			//	0	-1	0
 			//	0	0	-1
-			//rotate_to_sys.at<double>(0,0) = 1.0;
-			//rotate_to_sys.at<double>(0,1) = 0.0;
-			//rotate_to_sys.at<double>(0,2) = 0.0;
-			//rotate_to_sys.at<double>(1,0) = 0.0;
-			//rotate_to_sys.at<double>(1,1) = -1.0;
-			//rotate_to_sys.at<double>(1,2) = 0.0;
-			//rotate_to_sys.at<double>(2,0) = 0.0;
-			//rotate_to_sys.at<double>(2,1) = 0.0;
-			//rotate_to_sys.at<double>(2,2) = -1.0;
-			//rot = rot*rotate_to_sys.t();
-
+			rotate_to_sys.at<double>(0,0) = 1.0;
+			rotate_to_sys.at<double>(0,1) = 0.0;
+			rotate_to_sys.at<double>(0,2) = 0.0;
+			rotate_to_sys.at<double>(1,0) = 0.0;
+			rotate_to_sys.at<double>(1,1) = -1.0;
+			rotate_to_sys.at<double>(1,2) = 0.0;
+			rotate_to_sys.at<double>(2,0) = 0.0;
+			rotate_to_sys.at<double>(2,1) = 0.0;
+			rotate_to_sys.at<double>(2,2) = -1.0;
+			rot = rot*rotate_to_sys.t();
+			*/
 			tf::Matrix3x3 tf_rot(rot.at<double>(0,0), rot.at<double>(0,1), rot.at<double>(0,2),
 				rot.at<double>(1,0), rot.at<double>(1,1), rot.at<double>(1,2),
 				rot.at<double>(2,0), rot.at<double>(2,1), rot.at<double>(2,2));
