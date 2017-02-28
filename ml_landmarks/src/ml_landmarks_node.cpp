@@ -150,11 +150,13 @@ class MarkerLandmarks {
 
 		double min_confidence;
 		bool snap_to_ref_plane;
-		bool lpf_pos_apply;
+		bool lpf_apply;
 		double lpf_pos_beta;
+		double lpf_quat_beta;
 
 		bool found_static_ref;
 		std::vector< int > known_landmarks;
+		std::vector< geometry_msgs::Transform > landmarks_pose;
 		std::vector< std::vector< int > > landmarks_list;
 
 		tf2_ros::Buffer tfBuffer;
@@ -184,6 +186,7 @@ class MarkerLandmarks {
 				std::vector< int > temp_list;	//This creates a list of 1, as it is the first node in the branch
 				temp_list.push_back(lm_static_ref_id);
 				landmarks_list.push_back(temp_list);
+				landmarks_pose.push_back(lm_static_ref_pos);
 
 				geometry_msgs::TransformStamped tf_static_ref;
 				tf_static_ref.header.stamp = ros::Time::now();
@@ -196,9 +199,11 @@ class MarkerLandmarks {
 
 			loadParam(nh_, "min_confidence", min_confidence);
 			loadParam(nh_, "snap_to_ref_plane", snap_to_ref_plane);
-			loadParam(nh_, "lpf_pos_apply", lpf_pos_apply);
-			if (lpf_pos_apply)	//Cut down on warning messages
+			loadParam(nh_, "lpf_apply", lpf_apply);
+			if (lpf_apply) {	//Cut down on warning messages
 				loadParam(nh_, "lpf_pos_beta", lpf_pos_beta);
+				loadParam(nh_, "lpf_quat_beta", lpf_quat_beta);
+			}
 
 			marker_sub_ = nh_.subscribe<ml_msgs::MarkerDetection> ( topic_marker_detected, 100, &MarkerLandmarks::marker_cb, this );
 			pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ( topic_pose_estimate, 100 );
@@ -237,6 +242,7 @@ class MarkerLandmarks {
 							std::vector< int > temp_list;	//This creates a list of 1, as it is the first node in the branch
 							temp_list.push_back(lm_static_ref_id);
 							landmarks_list.push_back(temp_list);
+							landmarks_pose.push_back(lm_static_ref_pos);
 
 							//Add it to the list of references
 							known_reference_points.push_back(known_landmarks.size() - 1);
@@ -291,7 +297,7 @@ class MarkerLandmarks {
 				for(int k = 0; k < known_reference_points.size(); k++) {
 					//For all execpt the best reference point and the static landmark
 					if( ( known_reference_points.at(k) != ind_ref) && (known_landmarks.at(known_reference_points.at(k)) != lm_static_ref_id) ) {
-						bool update_transform = false;
+						bool updated_branch = false;
 						tf2::Transform lm_tf;
 
 						std::vector< int > found_branch = landmarks_list.at(known_reference_points.at(k));	//The refernce branch of the current marker
@@ -317,20 +323,90 @@ class MarkerLandmarks {
 							temp_str += "]";
 							ROS_INFO("%s", temp_str.c_str());
 
-							update_transform = true;
-						} else if ( (found_branch.at(found_branch.size() - 2) == ind_ref) && lpf_pos_apply) {	//Else if ind_ref is the current markers parent
-							//TODO: Filter the position
-
-							update_transform = true;
-						}	//Else it's already in a equal or better branch
+							updated_branch = true;
+						} //Else it's already in a equal or better branch
 
 						//Broadcast the new transform for this marker
-						if(update_transform) {
-							if(snap_to_ref_plane) {
-								//TODO: Align to axis
+						if( updated_branch || lpf_apply ) {	//TODO: This has to be able to be done a better way
+							std::vector< int > current_branch;
+							current_branch = landmarks_list.at(known_reference_points.at(k));
+							int id_parent = current_branch.at(current_branch.size() - 2);
+							int id_child = current_branch.at(current_branch.size() - 1);
+
+							bool parent_in_frame = false;
+
+							ROS_INFO("Markers in frame:");
+							for(int lpf_i = 0; lpf_i < found_reference_points.size(); lpf_i++) {
+								ROS_INFO("%i", msg->markers.at( found_reference_points.at(lpf_i) ).marker_id );
+								if( id_parent == msg->markers.at( found_reference_points.at(lpf_i) ).marker_id ) {
+									parent_in_frame = true;
+									ROS_INFO("PARENT FOUND");
+								}
 							}
 
-							//TODO: Actually work out the new transform
+							//TODO: BUG: Moving branch then running lpf causes issues
+							//		Maybe markers are actually removed for bad confidence but this is not aware?
+
+							if(parent_in_frame) {
+								geometry_msgs::TransformStamped tf_temp;
+								tf_temp.header.stamp = msg->header.stamp;
+								tf_temp.header.frame_id = "ml/" + msg->header.frame_id;
+								tf_temp.child_frame_id = "ml/id_" + std::to_string(id_child) + "_temp";
+								poseToTransform(msg->markers.at(found_reference_points.at(k)).pose, tf_temp.transform);
+								tfBuffer.setTransform(tf_temp, "ml_temp_transform");	//Add a temporary transform to the local listener
+
+								ROS_INFO("Attempting to find transform: %i -> %i", id_parent, id_child);
+
+								try {
+									geometry_msgs::TransformStamped tf_new;
+									tf_new = tfBuffer.lookupTransform( "ml/id_" + std::to_string(id_parent), "ml/id_" + std::to_string(id_child) + "_temp", msg->header.stamp, ros::Duration(0.5) );
+
+									if(snap_to_ref_plane) {
+										tf_new.transform.translation.z = 0;
+
+										tf2::Quaternion q;
+										quaternionMsgToTF2( tf_new.transform.rotation, q );
+										tf2::Matrix3x3 r( q );
+										tf2::Vector3 body_x;
+										tf2::Vector3 body_y( r.getRow(1) );
+										tf2::Vector3 body_z(0.0, 0.0, 1.0);
+
+										body_x = body_y.cross(body_z);
+										body_x.normalize();
+										body_y = body_z.cross(body_x);
+										r.setValue( body_x.x(), body_x.y(), body_x.z(), body_y.x(), body_y.y(), body_y.z(), body_z.x(), body_z.y(), body_z.z() );
+
+										r.getRotation( q );
+										quaternionTF2ToMsg(q, tf_new.transform.rotation);
+									}
+
+									if( !updated_branch && lpf_apply ) {	//Filter the pose estimate as long as we haven't just updated the branch
+										tf2::Transform lpf_tf;
+										tf2::Transform lpf_raw;
+										transformMsgToTF2( landmarks_pose.at(known_reference_points.at(k)), lpf_tf);
+										transformMsgToTF2( tf_new.transform, lpf_raw);
+
+										//Translation Low Pass Filter
+										lpf_tf.setOrigin( lpf_tf.getOrigin() - ( lpf_pos_beta * ( lpf_tf.getOrigin() - lpf_raw.getOrigin() ) ) );
+										//Rotation Low Pass Filter
+										lpf_tf.setRotation( ( lpf_tf.getRotation() - ( ( lpf_tf.getRotation() - lpf_raw.getRotation() ) * lpf_quat_beta ) ).normalized() );
+										//TODO: Should make sure this is a valid way of filtering the quaternion
+										transformTF2ToMsg( lpf_tf, tf_new.transform );
+									}
+
+									landmarks_pose.at(known_reference_points.at(k)) = tf_new.transform;
+
+									tf_new.child_frame_id = "ml/id_" + std::to_string(id_child);
+									tfbrs_.sendTransform(tf_new);
+
+									if(updated_branch)
+										ROS_INFO("Published new transform for %i->%i", id_parent, id_child);
+								} catch (tf2::TransformException &ex) {
+									ROS_WARN("%s",ex.what());
+									ros::Duration(1.0).sleep();
+									continue;
+								}
+							}
 						}
 					}
 				}
@@ -347,6 +423,7 @@ class MarkerLandmarks {
 					temp_list = landmarks_list.at(ind_ref);	//Get the branch for the index reference
 					temp_list.push_back(id_new);	//Append the new id
 					landmarks_list.push_back(temp_list);	//Add this to the known lists
+					//landmarks_pose.push_back() is performed below so we can easily use the same transform
 
 					std::string temp_str = "New marker with id " + std::to_string(id_new) + ": [";
 					for(int c = 0; c < temp_list.size(); c++) {
@@ -390,6 +467,8 @@ class MarkerLandmarks {
 							r.getRotation( q );
 							quaternionTF2ToMsg(q, tf_new.transform.rotation);
 						}
+
+						landmarks_pose.push_back(tf_new.transform);
 
 						tfbrs_.sendTransform(tf_new);
 					} catch (tf2::TransformException &ex) {

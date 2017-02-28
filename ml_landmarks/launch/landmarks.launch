@@ -16,8 +16,9 @@
 		<!-- Accuracy Filtering -->
 		<param name="min_confidence" value="0.75" type="double"/>
 		<param name="snap_to_ref_plane" value="true" type="boolean"/>
-		<param name="lpf_pos_apply" value="true" type="boolean"/>
+		<param name="lpf_apply" value="true" type="boolean"/>
 		<param name="lpf_pos_beta" value="0.025" type="double"/>
+		<param name="lpf_quat_beta" value="0.025" type="double"/>
 
 		<!-- Marker Visualization -->
 		<param name="show_viz" value="true" type="boolean"/>
