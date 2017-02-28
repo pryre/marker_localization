@@ -14,10 +14,8 @@
 		<rosparam param="lm_static_ref_pose">[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]</rosparam>
 
 		<!-- Accuracy Filtering -->
-		<param name="min_confidence" value="0.5" type="double"/>
-		<param name="snap_plane_apply" value="true" type="boolean"/>
-		<!-- Plane to align markers [W,X,Y,Z] - plane is perpendicular to quaternion-->
-		<rosparam param="snap_quat_plane">[0.0, 0.0, 0.0, 1.0]</rosparam>
+		<param name="min_confidence" value="0.75" type="double"/>
+		<param name="snap_to_ref_plane" value="true" type="boolean"/>
 		<param name="lpf_pos_apply" value="true" type="boolean"/>
 		<param name="lpf_pos_beta" value="0.025" type="double"/>
 
