@@ -6,7 +6,11 @@
 #include <ml_msgs/Marker.h>
 #include <ml_msgs/MarkerDetection.h>
 #include <geometry_msgs/Pose.h>
-#include <tf/tf.h>
+#include <geometry_msgs/Point.h>
+#include <geometry_msgs/Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
 
 #include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
@@ -53,6 +57,44 @@ void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
 	} else {
 		ROS_INFO( "Loaded %s: %s", str.c_str(), param.c_str() );
 	}
+}
+
+
+void pointMsgToTF2( const geometry_msgs::Point &vg, tf2::Vector3 &vt ) {
+	vt = tf2::Vector3( vg.x, vg.y, vg.z );
+}
+
+void pointTF2ToMsg( const tf2::Vector3 &vt, geometry_msgs::Point &vg ) {
+	vg.x = vt.x();
+	vg.y = vt.y();
+	vg.z = vt.z();
+}
+
+void quaternionMsgToTF2( const geometry_msgs::Quaternion &qg, tf2::Quaternion &qt ) {
+	qt = tf2::Quaternion (qg.x, qg.y, qg.z, qg.w);
+}
+
+void quaternionTF2ToMsg( const tf2::Quaternion &qt, geometry_msgs::Quaternion &qg  ) {
+	qg.x = qt.x();
+	qg.y = qt.y();
+	qg.z = qt.z();
+	qg.w = qt.w();
+}
+
+void poseMsgToTF2( const geometry_msgs::Pose &g, tf2::Transform &t ) {
+	tf2::Vector3 v;
+	tf2::Quaternion q;
+
+	pointMsgToTF2( g.position, v);
+	t.setOrigin(v);
+
+	quaternionMsgToTF2( g.orientation, q );
+	t.setRotation(q);
+}
+
+void poseTF2ToMsg( const tf2::Transform &t, geometry_msgs::Pose &g ) {
+	pointTF2ToMsg( t.getOrigin(), g.position );
+	quaternionTF2ToMsg( t.getRotation(), g.orientation );
 }
 
 class MarkerDetector {
@@ -175,7 +217,7 @@ class MarkerDetector {
 		}
 
 		//Pulled shamelessly from ar_sys (Sahloul)
-		tf::Transform getTF(const cv::Mat &Rvec, const cv::Mat &Tvec) {
+		tf2::Transform getTF(const cv::Mat &Rvec, const cv::Mat &Tvec) {
 			cv::Mat rot(3, 3, CV_64FC1);
 			cv::Rodrigues(Rvec, rot);
 
@@ -200,13 +242,13 @@ class MarkerDetector {
 			rotate_to_sys.at<double>(2,2) = -1.0;
 			rot = rot*rotate_to_sys.t();
 			*/
-			tf::Matrix3x3 tf_rot(rot.at<double>(0,0), rot.at<double>(0,1), rot.at<double>(0,2),
-				rot.at<double>(1,0), rot.at<double>(1,1), rot.at<double>(1,2),
-				rot.at<double>(2,0), rot.at<double>(2,1), rot.at<double>(2,2));
+			tf2::Matrix3x3 tf_rot(rot.at<double>(0,0), rot.at<double>(0,1), rot.at<double>(0,2),
+								  rot.at<double>(1,0), rot.at<double>(1,1), rot.at<double>(1,2),
+								  rot.at<double>(2,0), rot.at<double>(2,1), rot.at<double>(2,2));
 
-			tf::Vector3 tf_orig(Tvec.at<double>(0,0), Tvec.at<double>(1,0), Tvec.at<double>(2,0));
+			tf2::Vector3 tf_orig(Tvec.at<double>(0,0), Tvec.at<double>(1,0), Tvec.at<double>(2,0));
 
-			return tf::Transform(tf_rot, tf_orig);
+			return tf2::Transform(tf_rot, tf_orig);
 		}
 
 		bool readBoardConfig(ros::NodeHandle &n) {
@@ -412,7 +454,7 @@ class MarkerDetector {
 						marker_out.rows = board_configs.at(i).at(BC_ROWS);	//The number of rows of tags of the board found
 						marker_out.cols = board_configs.at(i).at(BC_COLS);	//The number of cols of tags of the board found
 						marker_out.marker_confidence = ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) );	//Return the ratio of markers found for this board
-						poseTFToMsg( getTF( cv::Mat(rvec), cv::Mat(tvec) ), marker_out.pose );
+						poseTF2ToMsg( getTF( cv::Mat(rvec), cv::Mat(tvec) ), marker_out.pose );
 
 						md_out.markers.push_back(marker_out);
 
