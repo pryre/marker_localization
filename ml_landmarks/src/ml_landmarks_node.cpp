@@ -11,8 +11,6 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/static_transform_broadcaster.h>
-//#include <tf/transform_listener.h>
-//#include <tf/transform_broadcaster.h>
 
 #include <vector>
 #include <string>
@@ -202,8 +200,6 @@ class MarkerLandmarks {
 			if (lpf_pos_apply)	//Cut down on warning messages
 				loadParam(nh_, "lpf_pos_beta", lpf_pos_beta);
 
-			//TODO: Marker Vizualization stuff
-
 			marker_sub_ = nh_.subscribe<ml_msgs::MarkerDetection> ( topic_marker_detected, 100, &MarkerLandmarks::marker_cb, this );
 			pose_pub_ = nh_.advertise<geometry_msgs::PoseStamped> ( topic_pose_estimate, 100 );
 
@@ -325,7 +321,7 @@ class MarkerLandmarks {
 						} else if ( (found_branch.at(found_branch.size() - 2) == ind_ref) && lpf_pos_apply) {	//Else if ind_ref is the current markers parent
 							//TODO: Filter the position
 
-							//TODO: update_transform = true;
+							update_transform = true;
 						}	//Else it's already in a equal or better branch
 
 						//Broadcast the new transform for this marker
@@ -336,9 +332,6 @@ class MarkerLandmarks {
 
 							//TODO: Actually work out the new transform
 						}
-
-						//If param set to do marker viz
-							//TODO: Publish marker viz
 					}
 				}
 
@@ -404,8 +397,6 @@ class MarkerLandmarks {
 						ros::Duration(1.0).sleep();
 						continue;
 					}
-					//If param set to do marker viz
-						//TODO: Publish marker viz
 				}
 			}
 		}
