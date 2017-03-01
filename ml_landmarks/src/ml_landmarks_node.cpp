@@ -328,34 +328,26 @@ class MarkerLandmarks {
 
 						//Broadcast the new transform for this marker
 						if( updated_branch || lpf_apply ) {	//TODO: This has to be able to be done a better way
-							std::vector< int > current_branch;
-							current_branch = landmarks_list.at(known_reference_points.at(k));
-							int id_parent = current_branch.at(current_branch.size() - 2);
-							int id_child = current_branch.at(current_branch.size() - 1);
+							//std::vector< int > current_branch;
+							//current_branch = landmarks_list.at(known_reference_points.at(k));
+							int id_parent = landmarks_list.at(known_reference_points.at(k)).at(landmarks_list.at(known_reference_points.at(k)).size() - 2);
+							int id_child = landmarks_list.at(known_reference_points.at(k)).at(landmarks_list.at(known_reference_points.at(k)).size() - 1);
 
-							bool parent_in_frame = false;
+							bool parent_is_ref = false;
 
-							ROS_INFO("Markers in frame:");
-							for(int lpf_i = 0; lpf_i < found_reference_points.size(); lpf_i++) {
-								ROS_INFO("%i", msg->markers.at( found_reference_points.at(lpf_i) ).marker_id );
-								if( id_parent == msg->markers.at( found_reference_points.at(lpf_i) ).marker_id ) {
-									parent_in_frame = true;
-									ROS_INFO("PARENT FOUND");
-								}
-							}
+							//XXX: This will cause the lpf to only be active if the marker reference is the parent_id
+							//	Meaning, that pose updates will not occur if the marker can be seen but is not the reference marker
+							//	TODO: This could be worked around in the future so that as long as both are in the frame, they are updated
+							if( id_parent == msg->markers.at( marker_ref ).marker_id )
+								parent_is_ref = true;
 
-							//TODO: BUG: Moving branch then running lpf causes issues
-							//		Maybe markers are actually removed for bad confidence but this is not aware?
-
-							if(parent_in_frame) {
+							if(parent_is_ref) {
 								geometry_msgs::TransformStamped tf_temp;
 								tf_temp.header.stamp = msg->header.stamp;
 								tf_temp.header.frame_id = "ml/" + msg->header.frame_id;
 								tf_temp.child_frame_id = "ml/id_" + std::to_string(id_child) + "_temp";
 								poseToTransform(msg->markers.at(found_reference_points.at(k)).pose, tf_temp.transform);
-								tfBuffer.setTransform(tf_temp, "ml_temp_transform");	//Add a temporary transform to the local listener
-
-								ROS_INFO("Attempting to find transform: %i -> %i", id_parent, id_child);
+								tfBuffer.setTransform(tf_temp, "ml_temp_transform");	//Add a temporary transform to the local listener);
 
 								try {
 									geometry_msgs::TransformStamped tf_new;
@@ -400,11 +392,11 @@ class MarkerLandmarks {
 									tfbrs_.sendTransform(tf_new);
 
 									if(updated_branch)
-										ROS_INFO("Published new transform for %i->%i", id_parent, id_child);
+										ROS_INFO("Published new transform for: %i -> %i", id_parent, id_child);
 								} catch (tf2::TransformException &ex) {
-									ROS_WARN("%s",ex.what());
-									ros::Duration(1.0).sleep();
-									continue;
+									ROS_ERROR("Attempting to find transform: %i -> %i\n%s", id_parent, id_child, ex.what());
+									//ros::Duration(1.0).sleep();
+									//continue;
 								}
 							}
 						}
