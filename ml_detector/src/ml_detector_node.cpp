@@ -419,7 +419,6 @@ class MarkerDetector {
 							corner.push_back(corners.at(ind));	//Pull out the corners of the marker at spcific index
 
 							cv::aruco::estimatePoseSingleMarkers(corner, marker_size, camera_matrix, dist_coeffs, rvecs, tvecs);
-
 					
 							if(send_detailed_tag_info) {
 								tags_found.push_back( ids.at(ind) );
@@ -490,12 +489,14 @@ class MarkerDetector {
 					}
 				}
 
-				//Transmit the detection message
-				md_out.header.stamp = msg->header.stamp;
-				md_out.header.frame_id = msg->header.frame_id;
-				md_out.header.seq = ++marker_seq;
+				if(md_out.markers.size() > 0) {
+					//Transmit the detection message
+					md_out.header.stamp = msg->header.stamp;
+					md_out.header.frame_id = msg->header.frame_id;
+					md_out.header.seq = ++marker_seq;
 
-				marker_pub_.publish(md_out);
+					marker_pub_.publish(md_out);
+				}
 			}
 
 			//Only send the debug image once

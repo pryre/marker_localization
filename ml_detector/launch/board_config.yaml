@@ -14,7 +14,7 @@ board_config:
   #  resolution when generating images
   # Sizes should reflect the real life marker sizes
   #  when detecting
-  marker_size: 0.087
+  marker_size: 0.277
   marker_spacing: 0.017
 
   border_bits: 1
@@ -30,22 +30,7 @@ board_config:
 boards:
   board_0:
     id: -1
-    rows: 2
-    cols: 2
-    marker_ids: []
-  board_1:
-    id: -1
-    rows: 2
-    cols: 2
-    marker_ids: []
-  board_2:
-    id: -1
-    rows: 2
-    cols: 2
-    marker_ids: []
-  board_3:
-    id: -1
-    rows: 2
-    cols: 2
+    rows: 1
+    cols: 1
     marker_ids: []
 
