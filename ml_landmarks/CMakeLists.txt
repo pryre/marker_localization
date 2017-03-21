@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(ml_landmarks)
 
+add_definitions(-std=c++11)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -9,10 +11,9 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   ml_msgs
   geometry_msgs
-  tf
+  tf2_ros
+  tf2
 )
-
-add_definitions(-std=c++11)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
