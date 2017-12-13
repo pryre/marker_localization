@@ -19,6 +19,7 @@ add_definitions(-std=c++11)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+find_package(OpenCV REQUIRED)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -146,14 +147,17 @@ add_executable(ml_generate_boards src/ml_generate_boards.cpp)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(ml_detector_node
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 target_link_libraries(ml_dump_dictionary
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 target_link_libraries(ml_generate_boards
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 #############

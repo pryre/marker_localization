@@ -337,7 +337,7 @@ class MarkerDetector {
 			loadParam(n, "system/max_erroneous_bits_in_border_rate", params->maxErroneousBitsInBorderRate);
 			loadParam(n, "system/error_correction_rate", params->errorCorrectionRate);
 
-			loadParam(n, "system/do_corner_refinement", params->doCornerRefinement);
+			loadParam(n, "system/corner_refinement_method", params->cornerRefinementMethod);
 			loadParam(n, "system/corner_refinement_win_size", params->cornerRefinementWinSize);
 			loadParam(n, "system/corner_refinement_max_iterations", params->cornerRefinementMaxIterations);
 			loadParam(n, "system/corner_refinement_min_accuracy", params->cornerRefinementMinAccuracy);
@@ -419,12 +419,12 @@ class MarkerDetector {
 							corner.push_back(corners.at(ind));	//Pull out the corners of the marker at spcific index
 
 							cv::aruco::estimatePoseSingleMarkers(corner, marker_size, camera_matrix, dist_coeffs, rvecs, tvecs);
-					
+
 							if(send_detailed_tag_info) {
 								tags_found.push_back( ids.at(ind) );
 								tags_found_confidence.push_back( 1.0f );	//We don't have a way to get a good rating of tag confidence
 							}
-							
+
 							markersOfBoardDetected = 1;
 							rvec = rvecs.at(0);
 							tvec = tvecs.at(0);
@@ -451,14 +451,14 @@ class MarkerDetector {
 
 							//Apply the adjustment
 							tvec += cv::Vec3d(rot_vec(0,0), rot_vec(1,0), rot_vec(2,0)); //Perform t = += v
-							
+
 							if(send_detailed_tag_info) {	//Just to allow the user to get a bit more speed from the system
 								tags_found = board_list[i]->ids;
 								tags_found_confidence.resize( tags_found.size(), 0.0f );
 
 								for(int j = 0; j < tags_found.size(); j++) {
 									std::vector<int>::iterator it = std::find( ids.begin(), ids.end(), tags_found.at(j) );
-							
+
 									if( it != ids.end() )
 										tags_found_confidence.at(j) = 1.0f;	//We don't have a way to get a good rating of tag confidence
 								}

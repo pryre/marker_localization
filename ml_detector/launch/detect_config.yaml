@@ -24,7 +24,11 @@ system:
   max_erroneous_bits_in_border_rate: 0
   error_correction_rate: 0
 
-  do_corner_refinement: true
+  #Corner refinement method (from: https://github.com/opencv/opencv_contrib/blob/master/modules/aruco/include/opencv2/aruco.hpp)
+  #  CORNER_REFINE_NONE: 0
+  #  CORNER_REFINE_SUBPIX: 1
+  #  CORNER_REFINE_CONTOUR: 2
+  corner_refinement_method: 1
   corner_refinement_win_size: 5
   corner_refinement_max_iterations: 30
   corner_refinement_min_accuracy: 0.05 #0.1
