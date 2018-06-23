@@ -24,6 +24,6 @@ generate_messages(DEPENDENCIES
 
 ## Declare a catkin package
 catkin_package(
-  DEPENDS
-  ml_msgs_generate_messages_cpp
+#  DEPENDS
+#  ml_msgs_generate_messages_cpp
 )
