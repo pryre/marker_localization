@@ -440,8 +440,8 @@ class MarkerDetector {
 							cv::Vec3d adj_vec;
 
 							//Adjust the calculated position to move it to the center of the board
-							adj_vec[0] = ( ( board_configs.at(i).at(BC_ROWS) / 2 ) * marker_size ) + ( ( board_configs.at(i).at(BC_ROWS) - 1 ) * marker_spacing / 2 );
-							adj_vec[1] = ( ( board_configs.at(i).at(BC_COLS) / 2 ) * marker_size ) + ( ( board_configs.at(i).at(BC_COLS) - 1 ) * marker_spacing / 2 );
+							adj_vec[0] = ( ( board_configs.at(i).at(BC_ROWS) / 2.0 ) * marker_size ) + ( ( board_configs.at(i).at(BC_ROWS) - 1 ) * marker_spacing / 2 );
+							adj_vec[1] = ( ( board_configs.at(i).at(BC_COLS) / 2.0 ) * marker_size ) + ( ( board_configs.at(i).at(BC_COLS) - 1 ) * marker_spacing / 2 );
 							adj_vec[2] = 0;
 
 							//Rotate the adjustment to match the camera frame
