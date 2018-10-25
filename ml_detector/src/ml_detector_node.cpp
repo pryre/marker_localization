@@ -96,8 +96,6 @@ class MarkerDetector {
 		bool camera_rectified_;
 		bool refine_strategy_;
 
-		std::vector< double > cam_info_K_;
-		std::vector< double > cam_info_D_;
 		cv::Mat camera_matrix_;
 		cv::Mat dist_coeffs_;
 
@@ -119,9 +117,9 @@ class MarkerDetector {
 			dyncfg_detector_settings_.setCallback(boost::bind(&MarkerDetector::callback_cfg_detector_settings, this, _1, _2));
 			dyncfg_system_settings_.setCallback(boost::bind(&MarkerDetector::callback_cfg_system_settings, this, _1, _2));
 
-			std::map< std::string, int > dictionary__ids = generate_dictionary__ids();
-			std::string dictionary__id = "DICT_4X4_50";
-			nhp_.param("board_config/dictionary_", dictionary__id, dictionary__id);
+			std::map< std::string, int > dictionary_ids = generate_dictionary_ids();
+			std::string dictionary_id = "DICT_4X4_50";
+			nhp_.param("board_config/dictionary", dictionary_id, dictionary_id);
 
 			marker_seq_ = 0;
 			debug_seq_ = 0;
@@ -129,8 +127,8 @@ class MarkerDetector {
 			// Subscrive to input video feed and publish output video feed
 			overlay_image_pub_ = it_.advertise("image_overlay", 1);
 
-			dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary__ids[dictionary__id]));
-			ROS_INFO("Dictionary size: [%i]", dictionary_->bytesList.rows);
+			dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));
+			ROS_INFO("Dictionary: %s (size: %i)", dictionary_id.c_str(), dictionary_->bytesList.rows);
 
 			if( readBoardConfig() && readBoardDefinitions() ) {
 				ROS_INFO("Board definitions read sucessfully!");
@@ -159,7 +157,7 @@ class MarkerDetector {
 		~MarkerDetector() {
 		}
 
-		std::map< std::string, int > generate_dictionary__ids() {
+		std::map< std::string, int > generate_dictionary_ids() {
 			std::map< std::string, int > dict;
 			dict["DICT_4X4_50"] = 0;
 			dict["DICT_4X4_100"] = 1;
@@ -263,10 +261,15 @@ class MarkerDetector {
 			nhp_.param("board_config/marker_size", marker_size_, marker_size_);
 			nhp_.param("board_config/marker_spacing", marker_spacing_, marker_spacing_);
 
+			ROS_INFO("Board configuration:");
+			ROS_INFO("  Boarder bits: %i", border_bits_);
+			ROS_INFO("  Marker size: %0.4f", marker_size_);
+			ROS_INFO("  Marker spacing: %0.4f", marker_spacing_);
+
 			if( (border_bits_ > 0) && (marker_size_ > 0) && (marker_spacing_ > 0) ) {
 				success = true;
 			} else {
-				ROS_ERROR("Invalid board_config parameters");
+				ROS_ERROR("Invalid board configuration parameters");
 			}
 
 			return success;
