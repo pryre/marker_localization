@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   ml_msgs
   geometry_msgs
   tf2
+  dynamic_reconfigure
 )
 
 add_definitions(-std=c++11)
@@ -93,10 +94,10 @@ find_package(OpenCV REQUIRED)
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/DetectorParams.cfg
+  cfg/SystemParams.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -142,7 +143,7 @@ add_executable(ml_generate_boards src/ml_generate_boards.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(ml_detector_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(ml_detector_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 add_dependencies(ml_dump_dictionary ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(ml_generate_boards ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 

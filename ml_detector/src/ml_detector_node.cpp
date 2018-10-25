@@ -12,6 +12,10 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
 
+#include <dynamic_reconfigure/server.h>
+#include <ml_detector/DetectorParamsConfig.h>
+#include <ml_detector/SystemParamsConfig.h>
+
 #include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
 
@@ -19,46 +23,11 @@
 #include <string>
 #include <map>
 
-//static const std::string OPENCV_WINDOW = "Image window";
-
 typedef enum {
 	BC_ID = 0,
 	BC_ROWS,
 	BC_COLS
 } board_config_names;
-
-void loadParam(ros::NodeHandle &n, const std::string &str, bool &param) {
-	if( !n.getParam( str, param ) ) {
-		ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param ? "true" : "false" );
-	} else {
-		ROS_INFO( "Loaded %s: %s", str.c_str(), param ? "true" : "false" );
-	}
-}
-
-void loadParam(ros::NodeHandle &n, const std::string &str, int &param) {
-	if( !n.getParam( str, param ) ) {
-		ROS_WARN( "No parameter set for \"%s\", using: %i", str.c_str(), param );
-	} else {
-		ROS_INFO( "Loaded %s: %i", str.c_str(), param );
-	}
-}
-
-void loadParam(ros::NodeHandle &n, const std::string &str, double &param) {
-	if( !n.getParam( str, param ) ) {
-		ROS_WARN( "No parameter set for \"%s\", using: %f", str.c_str(), param );
-	} else {
-		ROS_INFO( "Loaded %s: %f", str.c_str(), param );
-	}
-}
-
-void loadParam(ros::NodeHandle &n, const std::string &str, std::string &param) {
-	if( !n.getParam( str, param ) ) {
-		ROS_WARN( "No parameter set for \"%s\", using: %s", str.c_str(), param.c_str() );
-	} else {
-		ROS_INFO( "Loaded %s: %s", str.c_str(), param.c_str() );
-	}
-}
-
 
 void pointMsgToTF2( const geometry_msgs::Point &vg, tf2::Vector3 &vt ) {
 	vt = tf2::Vector3( vg.x, vg.y, vg.z );
@@ -100,102 +69,97 @@ void poseTF2ToMsg( const tf2::Transform &t, geometry_msgs::Pose &g ) {
 class MarkerDetector {
 	private:
 		ros::NodeHandle nh_;
+		ros::NodeHandle nhp_;
 		image_transport::ImageTransport it_;
 		image_transport::Subscriber image_sub_;
-		image_transport::Publisher debug_image_pub_;
+		image_transport::Publisher overlay_image_pub_;
 		ros::Subscriber camera_info_sub_;
 		ros::Publisher marker_pub_;
 
-		cv::Ptr<cv::aruco::Dictionary> dictionary;
-		cv::Ptr<cv::aruco::DetectorParameters> detectorParams;
+		cv::Ptr<cv::aruco::Dictionary> dictionary_;
+		cv::Ptr<cv::aruco::DetectorParameters> detectorParams_;
 
-		int marker_seq;
-		int debug_seq;
+		dynamic_reconfigure::Server<ml_detector::SystemParamsConfig> dyncfg_system_settings_;
+		dynamic_reconfigure::Server<ml_detector::DetectorParamsConfig> dyncfg_detector_settings_;
 
-		int border_bits;
-		double marker_size;
-		double marker_spacing;
+		int marker_seq_;
+		int debug_seq_;
 
-		bool got_camera_info;
-		bool send_debug;
-		bool send_detailed_tag_info;
-		bool show_rejected;
-		bool camera_rectified;
-		bool refine_strategy;
+		int border_bits_;
+		double marker_size_;
+		double marker_spacing_;
 
-		std::vector< double > cam_info_K;
-		std::vector< double > cam_info_D;
-		cv::Mat camera_matrix;
-		cv::Mat dist_coeffs;
+		bool got_camera_info_;
+		bool send_overlay_;
+		bool send_detailed_tag_info_;
+		bool show_rejected_;
+		bool camera_rectified_;
+		bool refine_strategy_;
 
-		std::vector< cv::Ptr< cv::aruco::Board > > board_list;
-		std::vector< std::vector< int > > board_configs;
+		std::vector< double > cam_info_K_;
+		std::vector< double > cam_info_D_;
+		cv::Mat camera_matrix_;
+		cv::Mat dist_coeffs_;
+
+		std::vector< cv::Ptr< cv::aruco::Board > > board_list_;
+		std::vector< std::vector< int > > board_configs_;
 
 	public:
-		MarkerDetector() : nh_(ros::this_node::getName()), it_(nh_), got_camera_info(false) {
-			std::map< std::string, int > dictionary_ids = generate_dictionary_ids();
-			std::string dictionary_id;
-			loadParam(nh_, "board_config/dictionary", dictionary_id);
+		MarkerDetector() :
+			nh_(),
+			nhp_("~"),
+			it_(nhp_),
+			got_camera_info_(false),
+			border_bits_(0),
+			marker_size_(0.0),
+			marker_spacing_(0.0),
+			dyncfg_detector_settings_(ros::NodeHandle(nhp_, "detector")),
+			dyncfg_system_settings_(ros::NodeHandle(nhp_, "system")) {
 
-			std::string marker_topic = "markers";
-			std::string debug_image_topic = "image_debug";
-			std::string camera_info_topic = "/camera_info";
-			std::string input_image_topic = "/image";
+			dyncfg_detector_settings_.setCallback(boost::bind(&MarkerDetector::callback_cfg_detector_settings, this, _1, _2));
+			dyncfg_system_settings_.setCallback(boost::bind(&MarkerDetector::callback_cfg_system_settings, this, _1, _2));
 
-			loadParam(nh_, "debug_image_topic", debug_image_topic);
-			loadParam(nh_, "marker_topic", marker_topic);
-			loadParam(nh_, "camera_info_topic", camera_info_topic);
-			loadParam(nh_, "input_image_topic", input_image_topic);
-			loadParam(nh_, "camera_is_rectified", camera_rectified);
+			std::map< std::string, int > dictionary__ids = generate_dictionary__ids();
+			std::string dictionary__id = "DICT_4X4_50";
+			nhp_.param("board_config/dictionary_", dictionary__id, dictionary__id);
 
-			marker_seq = 0;
-			debug_seq = 0;
+			marker_seq_ = 0;
+			debug_seq_ = 0;
 
 			// Subscrive to input video feed and publish output video feed
-			debug_image_pub_ = it_.advertise(debug_image_topic, 1);
+			overlay_image_pub_ = it_.advertise("image_overlay", 1);
 
-			loadParam(nh_, "send_debug", send_debug);
-			loadParam(nh_, "send_detailed_tag_info", send_detailed_tag_info);
-			loadParam(nh_, "show_rejected", show_rejected);
-			loadParam(nh_, "refine_strategy", refine_strategy);
+			dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary__ids[dictionary__id]));
+			ROS_INFO("Dictionary size: [%i]", dictionary_->bytesList.rows);
 
-			dictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));
-			ROS_INFO("Dictionary size: [%i]", dictionary->bytesList.rows);
+			if( readBoardConfig() && readBoardDefinitions() ) {
+				ROS_INFO("Board definitions read sucessfully!");
 
-			detectorParams = cv::aruco::DetectorParameters::create();
-			readDetectorParameters(nh_, detectorParams);
+				camera_info_sub_ = nhp_.subscribe<sensor_msgs::CameraInfo> ( "camera_info", 1, &MarkerDetector::camera_info_cb, this );
+				marker_pub_ = nhp_.advertise<ml_msgs::MarkerDetection> ("detected_markers", 100);
 
-			bool board_config_ok = readBoardConfig(nh_);
-			bool board_definitions_ok = readBoardDefinitions(nh_);
+				ROS_INFO("Waiting for camera info...");
 
-			if(!board_config_ok || !board_definitions_ok) {
+				while(!got_camera_info_ && ros::ok()) {
+					ros::spinOnce();
+					ros::Rate(20).sleep();
+				}
+
+				ROS_INFO("Recieved camera info!");
+
+				image_sub_ = it_.subscribe("image_raw", 1, &MarkerDetector::image_cb, this);
+
+				ROS_INFO("Begining detection...");
+			} else {
 				ROS_ERROR("Error reading board configuration file.");
 				ros::shutdown();
-			} else {
-				ROS_INFO("Board definitions read sucessfully!");
 			}
-
-			camera_info_sub_ = nh_.subscribe<sensor_msgs::CameraInfo> ( camera_info_topic, 1, &MarkerDetector::camera_info_cb, this );
-			marker_pub_ = nh_.advertise<ml_msgs::MarkerDetection> (marker_topic, 100);
-
-			ROS_INFO("Waiting for camera info...");
-
-			while(!got_camera_info && ros::ok()) {
-				ros::spinOnce();
-				ros::Rate(20).sleep();
-			}
-
-			ROS_INFO("Recieved camera info!");
-
-			ROS_INFO("Begining detection...");
-
-			image_sub_ = it_.subscribe(input_image_topic, 1, &MarkerDetector::image_cb, this);
 		}
 
 		~MarkerDetector() {
 		}
 
-		std::map< std::string, int > generate_dictionary_ids() {
+		std::map< std::string, int > generate_dictionary__ids() {
 			std::map< std::string, int > dict;
 			dict["DICT_4X4_50"] = 0;
 			dict["DICT_4X4_100"] = 1;
@@ -216,6 +180,45 @@ class MarkerDetector {
 			dict["DICT_ARUCO_ORIGINAL"] = 16;
 
 			return dict;
+		}
+
+		void callback_cfg_system_settings(ml_detector::SystemParamsConfig &config, uint32_t level) {
+			send_overlay_ = config.publish_overlay;
+			send_detailed_tag_info_ = config.send_detailed_tag_info;
+			show_rejected_ = config.show_rejected;
+			refine_strategy_ = config.refine_strategy;
+			camera_rectified_ = config.camera_is_rectified;
+		}
+
+		void callback_cfg_detector_settings(ml_detector::DetectorParamsConfig &config, uint32_t level) {
+			if(detectorParams_.empty())
+				detectorParams_ = cv::aruco::DetectorParameters::create();
+
+			detectorParams_->adaptiveThreshWinSizeMin = config.adaptive_thresh_win_size_min;
+			detectorParams_->adaptiveThreshWinSizeMax = config.adaptive_thresh_win_size_max;
+			detectorParams_->adaptiveThreshWinSizeStep = config.adaptive_thresh_win_size_step;
+			detectorParams_->adaptiveThreshConstant = config.adaptive_thresh_constant;
+
+			detectorParams_->minMarkerPerimeterRate = config.min_marker_perimeter_rate;
+			detectorParams_->maxMarkerPerimeterRate = config.max_marker_perimeter_rate;
+
+			detectorParams_->polygonalApproxAccuracyRate = config.polygonal_approx_accuracy_rate;
+			detectorParams_->minCornerDistanceRate = config.min_corner_distance_rate;
+			detectorParams_->minMarkerDistanceRate = config.min_marker_distance_rate;
+			detectorParams_->minDistanceToBorder = config.min_distance_to_border;
+
+			detectorParams_->markerBorderBits = config.marker_border_bits;
+			detectorParams_->minOtsuStdDev = config.min_otsu_std_dev;
+			detectorParams_->perspectiveRemovePixelPerCell = config.perspective_remove_pixel_per_cell;
+			detectorParams_->perspectiveRemoveIgnoredMarginPerCell = config.perspective_remove_ignored_margin_per_cell;
+
+			detectorParams_->maxErroneousBitsInBorderRate = config.max_erroneous_bits_in_border_rate;
+			detectorParams_->errorCorrectionRate = config.error_correction_rate;
+
+			detectorParams_->cornerRefinementMethod = config.corner_refinement_method;
+			detectorParams_->cornerRefinementWinSize = config.corner_refinement_win_size;
+			detectorParams_->cornerRefinementMaxIterations = config.corner_refinement_max_iterations;
+			detectorParams_->cornerRefinementMinAccuracy = config.corner_refinement_min_accuracy;
 		}
 
 		//Pulled shamelessly from ar_sys (Sahloul)
@@ -253,47 +256,55 @@ class MarkerDetector {
 			return tf2::Transform(tf_rot, tf_orig);
 		}
 
-		bool readBoardConfig(ros::NodeHandle &n) {
-			loadParam(n, "board_config/border_bits", border_bits);
-			loadParam(n, "board_config/marker_size", marker_size);
-			loadParam(n, "board_config/marker_spacing", marker_spacing);
+		bool readBoardConfig(void) {
+			bool success = false;
 
-			return (border_bits > 0) && (marker_size > 0) && (marker_spacing > 0);
+			nhp_.param("board_config/border_bits", border_bits_, border_bits_);
+			nhp_.param("board_config/marker_size", marker_size_, marker_size_);
+			nhp_.param("board_config/marker_spacing", marker_spacing_, marker_spacing_);
+
+			if( (border_bits_ > 0) && (marker_size_ > 0) && (marker_spacing_ > 0) ) {
+				success = true;
+			} else {
+				ROS_ERROR("Invalid board_config parameters");
+			}
+
+			return success;
 		}
 
-		bool readBoardDefinitions(ros::NodeHandle &n) {
+		bool readBoardDefinitions(void) {
 			int board_id_gen = 0;
 			int marker_id_gen = 0;
 			int i = 0;
 			std::string board_name = "boards/board_";
 
-			while(n.hasParam( board_name + std::to_string(i) + "/id")) {
+			while(nhp_.hasParam( board_name + std::to_string(i) + "/id")) {
 				ROS_INFO("Loading configuration for board %i...", i);
-				board_configs.push_back(std::vector< int >(3));
+				board_configs_.push_back(std::vector< int >(3));
 
-				n.getParam( board_name + std::to_string(i) + "/rows", board_configs.at(i).at(BC_ROWS) );
-				n.getParam( board_name + std::to_string(i) + "/cols", board_configs.at(i).at(BC_COLS) );
+				nhp_.getParam( board_name + std::to_string(i) + "/rows", board_configs_.at(i).at(BC_ROWS) );
+				nhp_.getParam( board_name + std::to_string(i) + "/cols", board_configs_.at(i).at(BC_COLS) );
 
-				//ROS_ASSERT(((board_configs.at(i).at(BC_ROWS) > 0) && (board_configs.at(i).at(BC_COLS) > 0), "Rows and cols must be valid integers (>0)"
-				ROS_INFO("  Setting board_%i size: [%i, %i]", i, board_configs.at(i).at(BC_ROWS), board_configs.at(i).at(BC_COLS));
+				//ROS_ASSERT(((board_configs_.at(i).at(BC_ROWS) > 0) && (board_configs_.at(i).at(BC_COLS) > 0), "Rows and cols must be valid integers (>0)"
+				ROS_INFO("  Setting board_%i size: [%i, %i]", i, board_configs_.at(i).at(BC_ROWS), board_configs_.at(i).at(BC_COLS));
 
 				int temp_id = 0;
-				n.getParam( board_name + std::to_string(i) + "/id", temp_id );
+				nhp_.getParam( board_name + std::to_string(i) + "/id", temp_id );
 				if(temp_id < 0) {
-					board_configs.at(i).at(BC_ID) = board_id_gen++;	//Use the next free id and increment
+					board_configs_.at(i).at(BC_ID) = board_id_gen++;	//Use the next free id and increment
 				} else {
-					board_configs.at(i).at(BC_ID) = temp_id;
+					board_configs_.at(i).at(BC_ID) = temp_id;
 					board_id_gen = temp_id + 1;	//Set the new free id
 				}
-				ROS_INFO("  Setting board_%i id: %i", i, board_configs.at(i).at(BC_ID));
+				ROS_INFO("  Setting board_%i id: %i", i, board_configs_.at(i).at(BC_ID));
 
 				cv::Ptr<cv::aruco::GridBoard> gridboard =
-					cv::aruco::GridBoard::create(board_configs.at(i).at(BC_ROWS), board_configs.at(i).at(BC_COLS), marker_size, marker_spacing, dictionary);
+					cv::aruco::GridBoard::create(board_configs_.at(i).at(BC_ROWS), board_configs_.at(i).at(BC_COLS), marker_size_, marker_spacing_, dictionary_);
 
 				std::vector< int > temp_marker_ids;
-				n.getParam( board_name + std::to_string(i) + "/marker_ids", temp_marker_ids );
+				nhp_.getParam( board_name + std::to_string(i) + "/marker_ids", temp_marker_ids );
 				if(temp_marker_ids.size() < 1) {
-					for(int j = 0; j < ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) ); j++)
+					for(int j = 0; j < ( board_configs_.at(i).at(BC_ROWS) * board_configs_.at(i).at(BC_COLS) ); j++)
 						temp_marker_ids.push_back(marker_id_gen++);	//insert the next generated marker id, then increment
 
 					gridboard->ids = temp_marker_ids;
@@ -308,47 +319,19 @@ class MarkerDetector {
 							marker_id_gen = temp_marker_ids.at(j) + 1;	//If there was, the next id as the new free id
 				}
 
-				board_list.push_back( gridboard.staticCast<cv::aruco::Board>() );	//Add the board to the list
+				board_list_.push_back( gridboard.staticCast<cv::aruco::Board>() );	//Add the board to the list
 				i++;
 			}
 
 			return (i > 0);	//Definitions loaded OK!
 		}
 
-		void readDetectorParameters(ros::NodeHandle &n, cv::Ptr<cv::aruco::DetectorParameters> &params) {
-			loadParam(n, "system/adaptive_thresh_win_size_min", params->adaptiveThreshWinSizeMin);
-			loadParam(n, "system/adaptive_thresh_win_size_max", params->adaptiveThreshWinSizeMax);
-			loadParam(n, "system/adaptive_thresh_win_size_step", params->adaptiveThreshWinSizeStep);
-			loadParam(n, "system/adaptive_thresh_constant", params->adaptiveThreshConstant);
-
-			loadParam(n, "system/min_marker_perimeter_rate", params->minMarkerPerimeterRate);
-			loadParam(n, "system/max_marker_perimeter_rate", params->maxMarkerPerimeterRate);
-
-			loadParam(n, "system/polygonal_approx_accuracy_rate", params->polygonalApproxAccuracyRate);
-			loadParam(n, "system/min_corner_distance_rate", params->minCornerDistanceRate);
-			loadParam(n, "system/min_marker_distance_rate", params->minMarkerDistanceRate);
-			loadParam(n, "system/min_distance_to_border", params->minDistanceToBorder);
-
-			loadParam(n, "system/marker_border_bits", params->markerBorderBits);
-			loadParam(n, "system/min_otsu_std_dev", params->minOtsuStdDev);
-			loadParam(n, "system/perspective_remove_pixel_per_cell", params->perspectiveRemovePixelPerCell);
-			loadParam(n, "system/perspective_remove_ignored_margin_per_cell", params->perspectiveRemoveIgnoredMarginPerCell);
-
-			loadParam(n, "system/max_erroneous_bits_in_border_rate", params->maxErroneousBitsInBorderRate);
-			loadParam(n, "system/error_correction_rate", params->errorCorrectionRate);
-
-			loadParam(n, "system/corner_refinement_method", params->cornerRefinementMethod);
-			loadParam(n, "system/corner_refinement_win_size", params->cornerRefinementWinSize);
-			loadParam(n, "system/corner_refinement_max_iterations", params->cornerRefinementMaxIterations);
-			loadParam(n, "system/corner_refinement_min_accuracy", params->cornerRefinementMinAccuracy);
-		}
-
 		void camera_info_cb(const sensor_msgs::CameraInfoConstPtr& msg) {
 			//XXX: Here we are relying on the definition that ROS and OpenCV are both expecting 1x5 vectors
-			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(dist_coeffs);	//Create a 3xN matrix with the raw data and copy the data to the right location
+			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(dist_coeffs_);	//Create a 3xN matrix with the raw data and copy the data to the right location
 
 			cv::Mat_<double> m;
-			if(camera_rectified) {
+			if(camera_rectified_) {
 				m.push_back(msg->P[0]);
 				m.push_back(msg->P[1]);
 				m.push_back(msg->P[2]);
@@ -363,9 +346,9 @@ class MarkerDetector {
 					m.push_back( msg->K[i] );
 			}
 
-			m.reshape(0,3).copyTo(camera_matrix);	//Reshape to 3x3 and copy the data to the right location
+			m.reshape(0,3).copyTo(camera_matrix_);	//Reshape to 3x3 and copy the data to the right location
 
-			got_camera_info = true;	//Allow processing to begin
+			got_camera_info_ = true;	//Allow processing to begin
 		}
 
 		void image_cb(const sensor_msgs::ImageConstPtr& msg) {
@@ -387,12 +370,12 @@ class MarkerDetector {
 			std::vector< std::vector< cv::Point2f > > rejected;
 
 			// detect markers and estimate pose
-			cv::aruco::detectMarkers(cv_ptr->image, dictionary, corners, ids, detectorParams, rejected);
+			cv::aruco::detectMarkers(cv_ptr->image, dictionary_, corners, ids, detectorParams_, rejected);
 
 			if(ids.size() > 0) {	//If markers were found
 				ml_msgs::MarkerDetection md_out;	//Detected markers message
 
-				for(int i = 0; i < board_list.size(); i++) {	//Iterate through the known boards for matches
+				for(int i = 0; i < board_list_.size(); i++) {	//Iterate through the known boards for matches
 					int markersOfBoardDetected = 0;
 					std::vector< int > tags_found;
 					std::vector< double > tags_found_confidence;
@@ -403,9 +386,9 @@ class MarkerDetector {
 
 					//TODO: Maybe worth having a throttled message to keep track of average performance
 
-					if(board_list.at(i)->ids.size() == 1) {	//If the defined board is only 1 id
+					if(board_list_.at(i)->ids.size() == 1) {	//If the defined board is only 1 id
 						//Search the id list for the index of the single ID board
-						std::vector<int>::iterator it = std::find( ids.begin(), ids.end(), board_list.at(i)->ids.at(0) );
+						std::vector<int>::iterator it = std::find( ids.begin(), ids.end(), board_list_.at(i)->ids.at(0) );
 
 						if( it != ids.end() ) {	//A match was found in the image for id of the board
 							int ind = std::distance( ids.begin(), it);	//Get the index of the itterator
@@ -418,9 +401,9 @@ class MarkerDetector {
 							tvecs.push_back(tvec);
 							corner.push_back(corners.at(ind));	//Pull out the corners of the marker at spcific index
 
-							cv::aruco::estimatePoseSingleMarkers(corner, marker_size, camera_matrix, dist_coeffs, rvecs, tvecs);
+							cv::aruco::estimatePoseSingleMarkers(corner, marker_size_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
 
-							if(send_detailed_tag_info) {
+							if(send_detailed_tag_info_) {
 								tags_found.push_back( ids.at(ind) );
 								tags_found_confidence.push_back( 1.0f );	//We don't have a way to get a good rating of tag confidence
 							}
@@ -430,18 +413,18 @@ class MarkerDetector {
 							tvec = tvecs.at(0);
 						}
 					} else {	//Else it is a multi-marker board
-						if(refine_strategy)
-						    cv::aruco::refineDetectedMarkers(cv_ptr->image, board_list[i], corners, ids, rejected, camera_matrix, dist_coeffs);
+						if(refine_strategy_)
+						    cv::aruco::refineDetectedMarkers(cv_ptr->image, board_list_[i], corners, ids, rejected, camera_matrix_, dist_coeffs_);
 
-						markersOfBoardDetected = cv::aruco::estimatePoseBoard(corners, ids, board_list[i], camera_matrix, dist_coeffs, rvec, tvec);
+						markersOfBoardDetected = cv::aruco::estimatePoseBoard(corners, ids, board_list_[i], camera_matrix_, dist_coeffs_, rvec, tvec);
 
 						if(markersOfBoardDetected > 0) {
 							//Allocate the adjustment vector (u)
 							cv::Vec3d adj_vec;
 
 							//Adjust the calculated position to move it to the center of the board
-							adj_vec[0] = ( ( board_configs.at(i).at(BC_ROWS) / 2.0 ) * marker_size ) + ( ( board_configs.at(i).at(BC_ROWS) - 1 ) * marker_spacing / 2 );
-							adj_vec[1] = ( ( board_configs.at(i).at(BC_COLS) / 2.0 ) * marker_size ) + ( ( board_configs.at(i).at(BC_COLS) - 1 ) * marker_spacing / 2 );
+							adj_vec[0] = ( ( board_configs_.at(i).at(BC_ROWS) / 2.0 ) * marker_size_ ) + ( ( board_configs_.at(i).at(BC_ROWS) - 1 ) * marker_spacing_ / 2 );
+							adj_vec[1] = ( ( board_configs_.at(i).at(BC_COLS) / 2.0 ) * marker_size_ ) + ( ( board_configs_.at(i).at(BC_COLS) - 1 ) * marker_spacing_ / 2 );
 							adj_vec[2] = 0;
 
 							//Rotate the adjustment to match the camera frame
@@ -452,8 +435,8 @@ class MarkerDetector {
 							//Apply the adjustment
 							tvec += cv::Vec3d(rot_vec(0,0), rot_vec(1,0), rot_vec(2,0)); //Perform t = += v
 
-							if(send_detailed_tag_info) {	//Just to allow the user to get a bit more speed from the system
-								tags_found = board_list[i]->ids;
+							if(send_detailed_tag_info_) {	//Just to allow the user to get a bit more speed from the system
+								tags_found = board_list_[i]->ids;
 								tags_found_confidence.resize( tags_found.size(), 0.0f );
 
 								for(int j = 0; j < tags_found.size(); j++) {
@@ -471,10 +454,10 @@ class MarkerDetector {
 						ml_msgs::Marker marker_out;
 
 						//TODO: Should see if we can include tag data here
-						marker_out.marker_id = board_configs.at(i).at(BC_ID);	//The id of the board found
-						marker_out.rows = board_configs.at(i).at(BC_ROWS);	//The number of rows of tags of the board found
-						marker_out.cols = board_configs.at(i).at(BC_COLS);	//The number of cols of tags of the board found
-						marker_out.marker_confidence = ( (double)markersOfBoardDetected ) / ( board_configs.at(i).at(BC_ROWS) * board_configs.at(i).at(BC_COLS) );	//Return the ratio of markers found for this board
+						marker_out.marker_id = board_configs_.at(i).at(BC_ID);	//The id of the board found
+						marker_out.rows = board_configs_.at(i).at(BC_ROWS);	//The number of rows of tags of the board found
+						marker_out.cols = board_configs_.at(i).at(BC_COLS);	//The number of cols of tags of the board found
+						marker_out.marker_confidence = ( (double)markersOfBoardDetected ) / ( board_configs_.at(i).at(BC_ROWS) * board_configs_.at(i).at(BC_COLS) );	//Return the ratio of markers found for this board
 						marker_out.tag_ids = tags_found;
 						marker_out.tag_confidence = tags_found_confidence;
 						poseTF2ToMsg( getTF( cv::Mat(rvec), cv::Mat(tvec) ), marker_out.pose );
@@ -482,9 +465,9 @@ class MarkerDetector {
 						md_out.markers.push_back(marker_out);
 
 						//==-- draw results
-						if(send_debug && (debug_image_pub_.getNumSubscribers() > 0) ) {
+						if(send_overlay_ && (overlay_image_pub_.getNumSubscribers() > 0) ) {
 							//ROS_INFO("Found board %i", i);
-							cv::aruco::drawAxis(cv_ptr->image, camera_matrix, dist_coeffs, rvec, tvec, marker_size * 0.5f);
+							cv::aruco::drawAxis(cv_ptr->image, camera_matrix_, dist_coeffs_, rvec, tvec, marker_size_ * 0.5f);
 						}
 					}
 				}
@@ -493,23 +476,23 @@ class MarkerDetector {
 					//Transmit the detection message
 					md_out.header.stamp = msg->header.stamp;
 					md_out.header.frame_id = msg->header.frame_id;
-					md_out.header.seq = ++marker_seq;
+					md_out.header.seq = ++marker_seq_;
 
 					marker_pub_.publish(md_out);
 				}
 			}
 
 			//Only send the debug image once
-			if(send_debug && (debug_image_pub_.getNumSubscribers() > 0) ) {
+			if(send_overlay_ && (overlay_image_pub_.getNumSubscribers() > 0) ) {
 				if(ids.size() > 0) {
 					cv::aruco::drawDetectedMarkers(cv_ptr->image, corners, ids);
 				}
 
-				if(show_rejected && rejected.size() > 0)
+				if(show_rejected_ && rejected.size() > 0)
 					cv::aruco::drawDetectedMarkers(cv_ptr->image, rejected, cv::noArray(), cv::Scalar(100, 0, 255));
 
 				//==-- Output modified video stream
-				debug_image_pub_.publish(cv_ptr->toImageMsg());
+				overlay_image_pub_.publish(cv_ptr->toImageMsg());
 			}
 		}
 };

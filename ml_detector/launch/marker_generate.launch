@@ -1,3 +1,4 @@
+<?xml version='1.0'?>
 <launch>
 	<node pkg="ml_detector" type="ml_generate_boards" name="ml_generate_boards" clear_params="true" output="screen">
 		<param name="output_directory" value="/tmp/" type="str"/>
