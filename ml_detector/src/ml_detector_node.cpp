@@ -213,7 +213,8 @@ class MarkerDetector {
 			detectorParams_->maxErroneousBitsInBorderRate = config.max_erroneous_bits_in_border_rate;
 			detectorParams_->errorCorrectionRate = config.error_correction_rate;
 
-			detectorParams_->cornerRefinementMethod = config.corner_refinement_method;
+			ROS_WARN("Corner Refinement Method is currently unused");
+			//detectorParams_->cornerRefinementMethod = config.corner_refinement_method;
 			detectorParams_->cornerRefinementWinSize = config.corner_refinement_win_size;
 			detectorParams_->cornerRefinementMaxIterations = config.corner_refinement_max_iterations;
 			detectorParams_->cornerRefinementMinAccuracy = config.corner_refinement_min_accuracy;
