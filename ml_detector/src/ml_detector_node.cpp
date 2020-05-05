@@ -1,8 +1,13 @@
 #include <ros/ros.h>
 
 #include <image_transport/image_transport.h>
+#include <image_transport/camera_subscriber.h>
+// #include <message_filters/subscriber.h>
+// #include <message_filters/time_synchronizer.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
 #include <ml_msgs/Marker.h>
 #include <ml_msgs/MarkerDetection.h>
 #include <geometry_msgs/Pose.h>
@@ -82,12 +87,16 @@ class MarkerDetector {
 		dynamic_reconfigure::Server<ml_detector::SystemParamsConfig> dyncfg_system_settings_;
 		dynamic_reconfigure::Server<ml_detector::DetectorParamsConfig> dyncfg_detector_settings_;
 
+		image_transport::CameraSubscriber sub_camera_;
+
 		int marker_seq_;
 		int debug_seq_;
 
 		int border_bits_;
 		double marker_size_;
 		double marker_spacing_;
+
+		sensor_msgs::CameraInfo cam_info_;
 
 		bool got_camera_info_;
 		bool send_overlay_;
@@ -124,28 +133,17 @@ class MarkerDetector {
 			marker_seq_ = 0;
 			debug_seq_ = 0;
 
-			// Subscrive to input video feed and publish output video feed
-			overlay_image_pub_ = it_.advertise("image_overlay", 1);
-
 			dictionary_ = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME(dictionary_ids[dictionary_id]));
 			ROS_INFO("Dictionary: %s (size: %i)", dictionary_id.c_str(), dictionary_->bytesList.rows);
 
 			if( readBoardConfig() && readBoardDefinitions() ) {
 				ROS_INFO("Board definitions read sucessfully!");
 
-				camera_info_sub_ = nhp_.subscribe<sensor_msgs::CameraInfo> ( "camera_info", 1, &MarkerDetector::camera_info_cb, this );
+				// Subscribe to input video feed and publish output video feed
+				sub_camera_ = it_.subscribeCamera(ros::names::remap("image_raw"), 10, &MarkerDetector::detection_cb, this);
+
+				overlay_image_pub_ = it_.advertise("image_overlay", 1);
 				marker_pub_ = nhp_.advertise<ml_msgs::MarkerDetection> ("detected_markers", 100);
-
-				ROS_INFO("Waiting for camera info...");
-
-				while(!got_camera_info_ && ros::ok()) {
-					ros::spinOnce();
-					ros::Rate(20).sleep();
-				}
-
-				ROS_INFO("Recieved camera info!");
-
-				image_sub_ = it_.subscribe("image_raw", 1, &MarkerDetector::image_cb, this);
 
 				ROS_INFO("Begining detection...");
 			} else {
@@ -330,36 +328,41 @@ class MarkerDetector {
 			return (i > 0);	//Definitions loaded OK!
 		}
 
-		void camera_info_cb(const sensor_msgs::CameraInfoConstPtr& msg) {
-			//XXX: Here we are relying on the definition that ROS and OpenCV are both expecting 1x5 vectors
-			cv::Mat_<double>(msg->D).reshape(0,1).copyTo(dist_coeffs_);	//Create a 3xN matrix with the raw data and copy the data to the right location
+		void decode_camera_info(const sensor_msgs::CameraInfoConstPtr& msg) {
+			//If we have a new camera header
+			if(cam_info_.header != msg->header) {
+				cam_info_ = *msg;
 
-			cv::Mat_<double> m;
-			if(camera_rectified_) {
-				m.push_back(msg->P[0]);
-				m.push_back(msg->P[1]);
-				m.push_back(msg->P[2]);
-				m.push_back(msg->P[4]);
-				m.push_back(msg->P[5]);
-				m.push_back(msg->P[6]);
-				m.push_back(msg->P[8]);
-				m.push_back(msg->P[9]);
-				m.push_back(msg->P[10]);
-			} else {
-				for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
-					m.push_back( msg->K[i] );
-			}
+				//XXX: Here we are relying on the definition that ROS and OpenCV are both expecting 1x5 vectors
+				cv::Mat_<double>(cam_info_.D).reshape(0,1).copyTo(dist_coeffs_);	//Create a 3xN matrix with the raw data and copy the data to the right location
 
-			m.reshape(0,3).copyTo(camera_matrix_);	//Reshape to 3x3 and copy the data to the right location
+				cv::Mat_<double> m;
+				if(camera_rectified_) {
+					m.push_back(cam_info_.P[0]);
+					m.push_back(cam_info_.P[1]);
+					m.push_back(cam_info_.P[2]);
+					m.push_back(cam_info_.P[4]);
+					m.push_back(cam_info_.P[5]);
+					m.push_back(cam_info_.P[6]);
+					m.push_back(cam_info_.P[8]);
+					m.push_back(cam_info_.P[9]);
+					m.push_back(cam_info_.P[10]);
+				} else {
+					for(int i = 0; i < 9; i++)	//Copy the raw data into the matrix
+						m.push_back( cam_info_.K[i] );
+				}
 
-			got_camera_info_ = true;	//Allow processing to begin
+				m.reshape(0,3).copyTo(camera_matrix_);	//Reshape to 3x3 and copy the data to the right location
+			} //Else, don't bother re-extracting
 		}
 
-		void image_cb(const sensor_msgs::ImageConstPtr& msg) {
+		void detection_cb(const sensor_msgs::ImageConstPtr& msg_img, const sensor_msgs::CameraInfoConstPtr& msg_info) {
+			decode_camera_info(msg_info);
+
 			cv_bridge::CvImagePtr cv_ptr;
 
 			try	{
-				cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
+				cv_ptr = cv_bridge::toCvCopy(msg_img, sensor_msgs::image_encodings::BGR8);
 			}
 
 			catch (cv_bridge::Exception& e) {
@@ -478,8 +481,8 @@ class MarkerDetector {
 
 				if(md_out.markers.size() > 0) {
 					//Transmit the detection message
-					md_out.header.stamp = msg->header.stamp;
-					md_out.header.frame_id = msg->header.frame_id;
+					md_out.header.stamp = msg_img->header.stamp;
+					md_out.header.frame_id = msg_img->header.frame_id;
 					md_out.header.seq = ++marker_seq_;
 
 					marker_pub_.publish(md_out);
